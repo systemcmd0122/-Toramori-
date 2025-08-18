@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "874048268433",
+    "project_id": "e-zuka-app",
+    "storage_bucket": "e-zuka-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:874048268433:android:edb2d9ecfd8163d74c3730",
+        "android_client_info": {
+          "package_name": "com.sadowara.e_zuka"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "874048268433-ul7lotjvrkns5gve67dpc5dkto1s4qbb.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.sadowara.e_zuka",
+            "certificate_hash": "5ed6e79e2965528c77a8c6f858d5e34598817c2c"
+          }
+        },
+        {
+          "client_id": "874048268433-vfto5qamcgjp69fbbqvk5k5jusavq59r.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDYogSg1n7IaCJbPgnFn5xw1JxiR1SDpsg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "874048268433-vfto5qamcgjp69fbbqvk5k5jusavq59r.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
