@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -28,7 +27,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -39,9 +37,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -54,6 +55,8 @@ import com.example.e_zuka.ui.components.ValidatedTextField
 import com.example.e_zuka.viewmodel.AuthViewModel
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 
 @Composable
 fun SignInScreen(
@@ -71,8 +74,9 @@ fun SignInScreen(
     val isLoading by viewModel.isLoading.collectAsState()
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
-    // メール・パスワードのバリデーション
+    // バリデーション関数
     val validateEmail: (String) -> String? = { value ->
         when {
             value.isBlank() -> "メールアドレスを入力してください"
@@ -81,7 +85,6 @@ fun SignInScreen(
             else -> null
         }
     }
-
     val validatePassword: (String) -> String? = { value ->
         when {
             value.isBlank() -> "パスワードを入力してください"
@@ -119,7 +122,10 @@ fun SignInScreen(
                     viewModel.signInWithGoogle(account)
                 }
             } catch (_: ApiException) {
-                // Handle Google Sign-In error
+                // suspend関数はコルーチン内で呼ぶ
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Googleサインインに失敗しました")
+                }
             }
         }
     }
@@ -150,7 +156,7 @@ fun SignInScreen(
 
                     Spacer(modifier = Modifier.height(32.dp))
 
-                    // Information card about email verification
+                    // 情報カード
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(
@@ -163,7 +169,7 @@ fun SignInScreen(
                         ) {
                             Icon(
                                 Icons.Default.Info,
-                                contentDescription = null,
+                                contentDescription = "メール認証について",
                                 modifier = Modifier.size(20.dp),
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -207,49 +213,21 @@ fun SignInScreen(
                         isRequired = true,
                         leadingIcon = Icons.Default.Lock,
                         trailingIcon = {
-                            IconButton(
-                                onClick = { passwordVisible = !passwordVisible }
-                            ) {
+                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                 Icon(
-                                    if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                    contentDescription = if (passwordVisible) "パスワードを隠す" else "パスワードを表示"
+                                    imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = if (passwordVisible) "パスワード非表示" else "パスワード表示"
                                 )
                             }
                         },
-                        visualTransformation = if (passwordVisible) {
-                            VisualTransformation.None
-                        } else {
-                            PasswordVisualTransformation()
-                        },
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(
                             keyboardType = KeyboardType.Password,
                             imeAction = ImeAction.Done
                         ),
-                        keyboardActions = KeyboardActions(
-                            onDone = {
-                                if (isFormValid) {
-                                    viewModel.signInWithEmail(email, password)
-                                }
-                            }
-                        ),
                         validateOnFocusChange = true,
                         validate = validatePassword
                     )
-
-                    Spacer(modifier = Modifier.height(8.dp))
-
-                    // パスワードリセットリンク
-                    TextButton(
-                        onClick = {
-                            if (email.isNotBlank()) {
-                                viewModel.resetPassword(email)
-                            }
-                        },
-                        modifier = Modifier.align(Alignment.End),
-                        enabled = !isLoading && email.isNotBlank() && emailError == null
-                    ) {
-                        Text("パスワードを忘れた場合")
-                    }
 
                     Spacer(modifier = Modifier.height(24.dp))
 
@@ -258,67 +236,39 @@ fun SignInScreen(
                         text = "ログイン",
                         isLoading = isLoading,
                         onClick = {
-                            if (isFormValid) {
-                                viewModel.signInWithEmail(email, password)
-                            }
+                            viewModel.signInWithEmail(email, password)
                         },
-                        enabled = isFormValid,
-                        error = if (!isFormValid) {
-                            "メールアドレスとパスワードを正しく入力してください"
-                        } else null
+                        enabled = isFormValid && !isLoading,
+                        error = if (emailError != null) emailError else passwordError
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Googleログインボタン
+                    // Googleサインインボタン
                     LoadingButton(
                         text = "Googleでログイン",
                         isLoading = isLoading,
                         onClick = {
-                            val signInIntent = viewModel.getGoogleSignInClient().signInIntent
-                            googleSignInLauncher.launch(signInIntent)
+                            val intent = viewModel.getGoogleSignInClient().signInIntent
+                            googleSignInLauncher.launch(intent)
                         },
                         enabled = !isLoading,
                         isOutlined = true
                     )
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    // サインアップリンク
-                    Row(
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            "アカウントをお持ちでない場合は",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        TextButton(
-                            onClick = onNavigateToSignUp,
-                            enabled = !isLoading
-                        ) {
-                            Text("新規登録")
-                        }
+                    // 新規登録への導線
+                    TextButton(onClick = onNavigateToSignUp, modifier = Modifier.semantics { contentDescription = "新規登録へ" }) {
+                        Text("アカウントをお持ちでない方はこちら")
                     }
                 }
             }
         }
-
-        // Snack barホスト
+        // Snackbar
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier.align(Alignment.BottomCenter)
-        ) { snackbarData ->
-            Snackbar(
-                action = {
-                    TextButton(onClick = { snackbarData.dismiss() }) {
-                        Text("閉じる")
-                    }
-                }
-            ) {
-                Text(snackbarData.visuals.message)
-            }
-        }
+        )
     }
 }

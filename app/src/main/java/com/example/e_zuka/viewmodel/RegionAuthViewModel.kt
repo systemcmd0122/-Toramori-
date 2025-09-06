@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.util.Date
 
 class RegionAuthViewModel : ViewModel() {
     private val regionAuthRepository = RegionAuthRepository()
@@ -110,36 +109,6 @@ class RegionAuthViewModel : ViewModel() {
                 val errorMessage = "地域認証状態の確認に失敗しました: ${e.message}"
                 _regionAuthState.value = RegionAuthState.Error(errorMessage)
                 _errorMessage.value = errorMessage
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
-
-    fun resetRegionVerification(user: FirebaseUser) {
-        viewModelScope.launch {
-            _isLoading.value = true
-
-            try {
-                Log.d(TAG, "Resetting region verification for user: ${user.uid}")
-
-                val result = regionAuthRepository.resetRegionVerification(user.uid)
-
-                if (result.success) {
-                    Log.d(TAG, "Region verification reset successful")
-
-                    _regionAuthState.value = RegionAuthState.NotVerified
-                    _successMessage.value = "地域認証をリセットしました"
-                    clearError()
-                } else {
-                    Log.w(TAG, "Failed to reset region verification: ${result.errorMessage}")
-
-                    _errorMessage.value = result.errorMessage ?: "地域認証のリセットに失敗しました"
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error resetting region verification", e)
-
-                _errorMessage.value = "地域認証のリセット中にエラーが発生しました: ${e.message}"
             } finally {
                 _isLoading.value = false
             }

@@ -55,31 +55,8 @@ class RegionMembersViewModel : ViewModel() {
         }
     }
 
-    fun refreshMembers(regionCodeId: String) {
-        Log.d(TAG, "Refreshing members for regionCodeId: $regionCodeId")
-        loadRegionMembers(regionCodeId)
-    }
-
     fun clearError() {
         _errorMessage.value = null
-    }
-
-    fun getMemberCount(): Int {
-        return _members.value.size
-    }
-
-    fun getMemberByUserId(userId: String): RegionMemberData? {
-        return _members.value.find { it.userId == userId }
-    }
-
-    fun searchMembers(query: String): List<RegionMemberData> {
-        return if (query.isBlank()) {
-            _members.value
-        } else {
-            _members.value.filter { member ->
-                member.displayName.contains(query, ignoreCase = true)
-            }
-        }
     }
 
     fun getUserSkills(userId: String, onResult: (List<String>) -> Unit) {
@@ -87,7 +64,7 @@ class RegionMembersViewModel : ViewModel() {
             try {
                 val skills = membersRepository.getUserSkills(userId)
                 onResult(skills)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 onResult(emptyList())
             }
         }

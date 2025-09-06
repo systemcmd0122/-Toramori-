@@ -182,28 +182,4 @@ class RegionAuthRepository {
         }
     }
 
-    suspend fun getActiveRegionCodes(): List<RegionData> {
-        return try {
-            Log.d(TAG, "Getting active region codes")
-
-            val snapshot = firestore.collection(REGION_CODES_COLLECTION)
-                .whereEqualTo("isActive", true)
-                .orderBy("createdAt", com.google.firebase.firestore.Query.Direction.DESCENDING)
-                .get()
-                .await()
-
-            val regionCodes = snapshot.documents.mapNotNull { doc ->
-                doc.toObject(RegionData::class.java)?.copy(
-                    codeId = doc.id
-                )
-            }
-
-            Log.d(TAG, "Found ${regionCodes.size} active region codes")
-
-            regionCodes
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get active region codes", e)
-            emptyList()
-        }
-    }
 }

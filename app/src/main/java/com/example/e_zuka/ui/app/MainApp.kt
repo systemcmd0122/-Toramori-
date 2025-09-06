@@ -13,16 +13,12 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Message
-import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,7 +28,6 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -56,14 +51,10 @@ import com.example.e_zuka.data.model.RegionAuthState
 import com.example.e_zuka.ui.auth.AuthScreen
 import com.example.e_zuka.ui.auth.RegionVerificationScreen
 import com.example.e_zuka.ui.auth.UserNameVerificationScreen
-import com.example.e_zuka.ui.chat.RegionChatScreen
 import com.example.e_zuka.ui.home.HomeScreen
 import com.example.e_zuka.ui.members.RegionMembersScreen
-import com.example.e_zuka.ui.notifications.NotificationsScreen
 import com.example.e_zuka.ui.settings.SettingsScreen
 import com.example.e_zuka.viewmodel.AuthViewModel
-import com.example.e_zuka.viewmodel.NotificationsViewModelFactory
-import com.example.e_zuka.viewmodel.RegionChatViewModel
 import com.example.e_zuka.viewmodel.RegionMembersViewModel
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.delay
@@ -187,7 +178,6 @@ private fun MainScreenWithNavigation(
     modifier: Modifier = Modifier
 ) {
     val membersViewModel: RegionMembersViewModel = viewModel()
-    val chatViewModel: RegionChatViewModel = viewModel()
     val regionAuthState by viewModel.regionAuthState.collectAsState()
     val regionCodeId = (regionAuthState as? RegionAuthState.Verified)?.regionData?.codeId ?: ""
 
@@ -203,18 +193,6 @@ private fun MainScreenWithNavigation(
             selectedIcon = Icons.Filled.Groups,
             unselectedIcon = Icons.Outlined.Groups,
             route = "members"
-        ),
-        NavigationItem(
-            title = "チャット",
-            selectedIcon = Icons.AutoMirrored.Filled.Message,
-            unselectedIcon = Icons.AutoMirrored.Outlined.Message,
-            route = "chat"
-        ),
-        NavigationItem(
-            title = "通知",
-            selectedIcon = Icons.Filled.Notifications,
-            unselectedIcon = Icons.Outlined.Notifications,
-            route = "notifications"
         ),
         NavigationItem(
             title = "設定",
@@ -281,9 +259,6 @@ private fun MainScreenWithNavigation(
                         HomeScreen(
                             user = user,
                             viewModel = viewModel,
-                            onThreadSelect = { thread ->
-                                selectedItemIndex = 3 // スレッド画面に遷移
-                            },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -296,29 +271,6 @@ private fun MainScreenWithNavigation(
                         )
                     }
                     2 -> {
-                        RegionChatScreen(
-                            user = user,
-                            regionCodeId = regionCodeId,
-                            viewModel = chatViewModel,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                    3 -> {
-                        NotificationsScreen(
-                            user = user,
-                            notificationsViewModel = viewModel(
-                                factory = NotificationsViewModelFactory()
-                            ),
-                            onProblemClick = { problemId ->
-                                // 問題詳細画面への遷移
-                            },
-                            onChatClick = { chatId ->
-                                // チャット画面への遷移
-                            },
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                    4 -> {
                         SettingsScreen(
                             user = user,
                             viewModel = viewModel,

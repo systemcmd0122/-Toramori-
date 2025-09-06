@@ -6,7 +6,6 @@ import com.sadowara.e_zuka.R
 import com.example.e_zuka.data.model.AuthResult
 import com.example.e_zuka.data.model.UserData
 import com.example.e_zuka.data.region.RegionAuthRepository
-import com.example.e_zuka.utils.NotificationUtils
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
@@ -18,7 +17,6 @@ import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FieldValue
-import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -75,16 +73,6 @@ class AuthRepository(context: Context) {
         return user
     }
 
-    private suspend fun saveFCMToken(user: FirebaseUser) {
-        try {
-            val token = FirebaseMessaging.getInstance().token.await()
-            NotificationUtils.saveFCMToken(user.uid, token)
-            Log.d(TAG, "FCM token saved for user: ${user.uid}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to save FCM token", e)
-        }
-    }
-
     suspend fun signInWithEmail(email: String, password: String): AuthResult {
         return try {
             Log.d(TAG, "Starting email sign in for: $email")
@@ -95,9 +83,6 @@ class AuthRepository(context: Context) {
 
                 // ユーザー情報を最新に更新
                 result.user!!.reload().await()
-
-                // FCMトークンを保存
-                saveFCMToken(result.user!!)
 
                 // Firestoreのユーザーデータを同期
                 syncUserDataToFirestore(result.user!!)
@@ -123,9 +108,6 @@ class AuthRepository(context: Context) {
 
                 // デフォルトの表示名は設定しない（本名確認フローに進む）
                 result.user?.reload()?.await()
-
-                // FCMトークンを保存
-                saveFCMToken(result.user!!)
 
                 // Firestoreにユーザーデータを作成
                 createUserDataInFirestore(result.user!!)
@@ -176,8 +158,6 @@ class AuthRepository(context: Context) {
                 // ユーザー情報を最新に更新
                 result.user!!.reload().await()
 
-                // FCMトークンを保存
-                saveFCMToken(result.user!!)
 
                 // Firestoreのユーザーデータを同期
                 syncUserDataToFirestore(result.user!!)

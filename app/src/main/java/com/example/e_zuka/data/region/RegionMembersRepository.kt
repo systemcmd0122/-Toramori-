@@ -6,6 +6,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import kotlinx.coroutines.tasks.await
 
+@Suppress("UNCHECKED_CAST")
 class RegionMembersRepository {
     private val firestore = FirebaseFirestore.getInstance()
 
@@ -74,132 +75,6 @@ class RegionMembersRepository {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get region members", e)
             throw e
-        }
-    }
-
-    suspend fun getMemberDetails(userId: String): RegionMemberData? {
-        return try {
-            Log.d(TAG, "Getting member details for userId: $userId")
-
-            // ユーザーの地域認証情報を取得
-            val userRegionDoc = firestore.collection(USER_REGIONS_COLLECTION)
-                .document(userId)
-                .get()
-                .await()
-
-            if (!userRegionDoc.exists()) {
-                Log.d(TAG, "No region data found for user: $userId")
-                return null
-            }
-
-            val regionName = userRegionDoc.getString("regionName") ?: ""
-            val verifiedAt = userRegionDoc.getTimestamp("verifiedAt") ?: return null
-            val isVerified = userRegionDoc.getBoolean("verified") ?: false
-
-            if (!isVerified) {
-                Log.d(TAG, "User is not verified: $userId")
-                return null
-            }
-
-            // ユーザーの詳細情報を取得
-            val userDoc = firestore.collection(USERS_COLLECTION)
-                .document(userId)
-                .get()
-                .await()
-
-            val displayName = if (userDoc.exists()) {
-                userDoc.getString("displayName") ?: "名前未設定"
-            } else {
-                "名前未設定"
-            }
-
-            val member = RegionMemberData(
-                userId = userId,
-                displayName = displayName,
-                regionName = regionName,
-                joinedAt = verifiedAt
-            )
-
-            Log.d(TAG, "Successfully got member details: ${member.displayName}")
-
-            member
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get member details for user: $userId", e)
-            null
-        }
-    }
-
-    suspend fun getRegionMemberCount(regionCodeId: String): Int {
-        return try {
-            Log.d(TAG, "Getting member count for regionCodeId: $regionCodeId")
-
-            val userRegionsQuery = firestore.collection(USER_REGIONS_COLLECTION)
-                .whereEqualTo("regionCodeId", regionCodeId)
-                .whereEqualTo("verified", true)
-                .get()
-                .await()
-
-            val count = userRegionsQuery.documents.size
-            Log.d(TAG, "Region member count: $count")
-
-            count
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get region member count", e)
-            0
-        }
-    }
-
-    suspend fun isUserInRegion(userId: String, regionCodeId: String): Boolean {
-        return try {
-            Log.d(TAG, "Checking if user $userId is in region $regionCodeId")
-
-            val userRegionDoc = firestore.collection(USER_REGIONS_COLLECTION)
-                .document(userId)
-                .get()
-                .await()
-
-            if (!userRegionDoc.exists()) {
-                Log.d(TAG, "No region data found for user: $userId")
-                return false
-            }
-
-            val userRegionCodeId = userRegionDoc.getString("regionCodeId") ?: ""
-            val isVerified = userRegionDoc.getBoolean("verified") ?: false
-
-            val result = isVerified && userRegionCodeId == regionCodeId
-            Log.d(TAG, "User $userId in region $regionCodeId: $result")
-
-            result
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to check if user is in region", e)
-            false
-        }
-    }
-
-    suspend fun searchMembersInRegion(regionCodeId: String, searchQuery: String): List<RegionMemberData> {
-        return try {
-            Log.d(TAG, "Searching members in region $regionCodeId with query: $searchQuery")
-
-            val allMembers = getRegionMembers(regionCodeId)
-
-            val filteredMembers = if (searchQuery.isBlank()) {
-                allMembers
-            } else {
-                allMembers.filter { member ->
-                    member.displayName.contains(searchQuery, ignoreCase = true)
-                }
-            }
-
-            Log.d(TAG, "Search found ${filteredMembers.size} members matching query")
-
-            filteredMembers
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to search members in region", e)
-            emptyList()
         }
     }
 

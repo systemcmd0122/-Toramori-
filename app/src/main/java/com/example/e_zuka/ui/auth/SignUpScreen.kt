@@ -1,6 +1,8 @@
 package com.example.e_zuka.ui.auth
 
 import android.app.Activity
+import android.content.Intent
+import android.util.Patterns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -15,7 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -42,9 +43,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -57,6 +61,7 @@ import com.example.e_zuka.ui.components.ValidatedTextField
 import com.example.e_zuka.viewmodel.AuthViewModel
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
+import kotlinx.coroutines.launch
 
 @Composable
 fun SignUpScreen(
@@ -78,17 +83,17 @@ fun SignUpScreen(
     val emailVerificationSent by viewModel.emailVerificationSent.collectAsState()
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     // バリデーション関数
     val validateEmail: (String) -> String? = { value ->
         when {
             value.isBlank() -> "メールアドレスを入力してください"
-            !android.util.Patterns.EMAIL_ADDRESS.matcher(value).matches() ->
+            !Patterns.EMAIL_ADDRESS.matcher(value).matches() ->
                 "有効なメールアドレスを入力してください"
             else -> null
         }
     }
-
     val validatePassword: (String) -> String? = { value ->
         when {
             value.isBlank() -> "パスワードを入力してください"
@@ -99,7 +104,6 @@ fun SignUpScreen(
             else -> null
         }
     }
-
     val validateConfirmPassword: (String) -> String? = { value ->
         when {
             value.isBlank() -> "確認用パスワードを入力してください"
@@ -117,7 +121,7 @@ fun SignUpScreen(
                 email.isNotBlank() && password.isNotBlank() && confirmPassword.isNotBlank()
     }
 
-    // メッセージ表示
+    // エラーメッセージ表示
     val errorMessage by viewModel.errorMessage.collectAsState()
     LaunchedEffect(errorMessage) {
         errorMessage?.let {
@@ -138,7 +142,9 @@ fun SignUpScreen(
                     viewModel.signInWithGoogle(account)
                 }
             } catch (_: ApiException) {
-                // Handle Google Sign-In error
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("Googleサインインに失敗しました")
+                }
             }
         }
     }
@@ -202,92 +208,50 @@ fun SignUpScreen(
                             value = password,
                             onValueChange = { password = it },
                             label = "パスワード",
-                            hint = "6文字以上の英数字",
+                            hint = "大文字・小文字・数字を含む6文字以上",
                             error = passwordError,
                             isRequired = true,
                             leadingIcon = Icons.Default.Lock,
                             trailingIcon = {
-                                IconButton(
-                                    onClick = { passwordVisible = !passwordVisible }
-                                ) {
+                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                     Icon(
-                                        if (passwordVisible) {
-                                            Icons.Default.Visibility
-                                        } else {
-                                            Icons.Default.VisibilityOff
-                                        },
-                                        contentDescription = if (passwordVisible) {
-                                            "パスワードを隠す"
-                                        } else {
-                                            "パスワードを表示"
-                                        }
+                                        imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = if (passwordVisible) "パスワード非表示" else "パスワード表示"
                                     )
                                 }
                             },
-                            visualTransformation = if (passwordVisible) {
-                                VisualTransformation.None
-                            } else {
-                                PasswordVisualTransformation()
-                            },
+                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Password,
                                 imeAction = ImeAction.Next
                             ),
-                            info = "大文字、小文字、数字を含む6文字以上",
                             validateOnFocusChange = true,
                             validate = validatePassword
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // パスワード確認入力
+                        // 確認用パスワード入力
                         ValidatedTextField(
                             value = confirmPassword,
                             onValueChange = { confirmPassword = it },
-                            label = "パスワード（確認）",
-                            hint = "同じパスワードを入力",
+                            label = "確認用パスワード",
+                            hint = "もう一度パスワードを入力",
                             error = confirmPasswordError,
                             isRequired = true,
                             leadingIcon = Icons.Default.Lock,
                             trailingIcon = {
-                                IconButton(
-                                    onClick = {
-                                        confirmPasswordVisible = !confirmPasswordVisible
-                                    }
-                                ) {
+                                IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
                                     Icon(
-                                        if (confirmPasswordVisible) {
-                                            Icons.Default.Visibility
-                                        } else {
-                                            Icons.Default.VisibilityOff
-                                        },
-                                        contentDescription = if (confirmPasswordVisible) {
-                                            "パスワードを隠す"
-                                        } else {
-                                            "パスワードを表示"
-                                        }
+                                        imageVector = if (confirmPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                        contentDescription = if (confirmPasswordVisible) "パスワード非表示" else "パスワード表示"
                                     )
                                 }
                             },
-                            visualTransformation = if (confirmPasswordVisible) {
-                                VisualTransformation.None
-                            } else {
-                                PasswordVisualTransformation()
-                            },
+                            visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Password,
                                 imeAction = ImeAction.Done
-                            ),
-                            keyboardActions = KeyboardActions(
-                                onDone = {
-                                    if (isFormValid) {
-                                        viewModel.signUpWithEmail(
-                                            email,
-                                            password,
-                                            confirmPassword
-                                        )
-                                    }
-                                }
                             ),
                             validateOnFocusChange = true,
                             validate = validateConfirmPassword
@@ -295,60 +259,36 @@ fun SignUpScreen(
 
                         Spacer(modifier = Modifier.height(24.dp))
 
-                        // アカウント作成ボタン
+                        // 新規登録ボタン
                         LoadingButton(
-                            text = "アカウント作成",
+                            text = "新規登録",
                             isLoading = isLoading,
                             onClick = {
-                                if (isFormValid) {
-                                    viewModel.signUpWithEmail(
-                                        email,
-                                        password,
-                                        confirmPassword
-                                    )
-                                }
+                                viewModel.signUpWithEmail(email, password, confirmPassword)
                             },
-                            enabled = isFormValid,
-                            error = if (!isFormValid) {
-                                "すべての項目を正しく入力してください"
-                            } else null
+                            enabled = isFormValid && !isLoading,
+                            error = emailError ?: passwordError ?: confirmPasswordError
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // Googleログインボタン
+                        // Googleサインインボタン
                         LoadingButton(
-                            text = "Googleでログイン",
+                            text = "Googleで登録",
                             isLoading = isLoading,
                             onClick = {
-                                val signInIntent = viewModel.getGoogleSignInClient().signInIntent
+                                val signInIntent: Intent? = viewModel.getGoogleSignInClient().signInIntent
                                 googleSignInLauncher.launch(signInIntent)
                             },
                             enabled = !isLoading,
                             isOutlined = true
                         )
 
-                        Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(16.dp))
 
-                        // サインインリンク
-                        Row(
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                "既にアカウントをお持ちの場合は",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            TextButton(
-                                onClick = {
-                                    viewModel.clearEmailVerificationSent()
-                                    onNavigateToSignIn()
-                                },
-                                enabled = !isLoading
-                            ) {
-                                Text("ログイン")
-                            }
+                        // ログイン画面への導線
+                        TextButton(onClick = onNavigateToSignIn, modifier = Modifier.semantics { contentDescription = "ログインへ" }) {
+                            Text("すでにアカウントをお持ちの方はこちら")
                         }
                     }
                 }

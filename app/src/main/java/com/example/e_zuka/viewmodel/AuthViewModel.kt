@@ -145,8 +145,9 @@ class AuthViewModel(context: Context) : ViewModel() {
         return name != null &&
                 name.isNotBlank() &&
                 name.contains(" ") && // 姓名が分かれている
-                name.length >= 3 && // 最小限の長さ
-                name.matches(Regex("^[ぁ-んァ-ヶ一-龯々〆〤ー\\s]+$")) // 日本語文字のみ
+                name.length >= 2 && // 最小限の長さを2文字に緩和
+                // 日本語文字に加えて一般的な記号も許可
+                name.matches(Regex("^[ぁ-んァ-ヶ一-龯々〆〤ー・.\\s]+$"))
     }
 
     // 本名更新メソッド
@@ -311,29 +312,6 @@ class AuthViewModel(context: Context) : ViewModel() {
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "認証状態の確認に失敗しました: ${e.message}"
-            } finally {
-                _isLoading.value = false
-            }
-        }
-    }
-
-    fun resetPassword(email: String) {
-        if (email.isBlank()) {
-            _errorMessage.value = "メールアドレスを入力してください"
-            return
-        }
-
-        viewModelScope.launch {
-            _isLoading.value = true
-            try {
-                val result = authRepository.resetPassword(email.trim())
-                if (result.success) {
-                    _successMessage.value = "パスワードリセットメールを送信しました"
-                } else {
-                    _errorMessage.value = result.errorMessage ?: "パスワードリセットに失敗しました"
-                }
-            } catch (e: Exception) {
-                _errorMessage.value = "パスワードリセットに失敗しました: ${e.message}"
             } finally {
                 _isLoading.value = false
             }

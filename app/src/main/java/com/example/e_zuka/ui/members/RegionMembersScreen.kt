@@ -1,5 +1,6 @@
 package com.example.e_zuka.ui.members
 
+import android.annotation.SuppressLint
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -7,7 +8,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,7 +43,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -62,7 +61,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
@@ -233,7 +231,6 @@ fun RegionMembersScreen(
                                 membersViewModel.loadRegionMembers((regionAuthState as RegionAuthState.Verified).regionData.codeId)
                             },
                             onMemberClick = { member ->
-                                selectedUserId = member.userId
                                 selectedMemberName = member.displayName
                                 membersViewModel.getUserSkills(member.userId) { skills ->
                                     selectedSkills = skills
@@ -446,7 +443,7 @@ private fun MemberListItem(
     member: RegionMemberData,
     isCurrentUser: Boolean,
     onClick: () -> Unit = {},
-    modifier: Modifier = Modifier
+    @SuppressLint("ModifierParameter") modifier: Modifier = Modifier
 ) {
     val dateFormatter = remember { SimpleDateFormat("yyyy/MM/dd", Locale.JAPAN) }
     Card(

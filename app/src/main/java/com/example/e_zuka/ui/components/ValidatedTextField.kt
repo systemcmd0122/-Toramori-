@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -35,7 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -100,156 +102,64 @@ fun ValidatedTextField(
                         Text(
                             text = " *",
                             color = MaterialTheme.colorScheme.error,
-                            style = MaterialTheme.typography.bodySmall
+                            style = MaterialTheme.typography.labelMedium
                         )
                     }
                 }
             },
+            placeholder = hint?.let { { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) } },
+            isError = showError,
+            enabled = enabled,
+            readOnly = readOnly,
+            leadingIcon = leadingIcon?.let { { Icon(it, contentDescription = null) } },
+            trailingIcon = trailingIcon,
+            visualTransformation = visualTransformation,
+            keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
+            maxLines = maxLines,
             modifier = Modifier
                 .fillMaxWidth()
                 .focusRequester(focusRequester)
                 .onFocusChanged {
                     isFocused = it.isFocused
                     onFocusChange?.invoke(it.isFocused)
+                }
+                .semantics {
+                    if (showError && currentError != null) contentDescription = "エラー: $currentError"
+                    else if (showSuccess && currentSuccess != null) contentDescription = "成功: $currentSuccess"
+                    else contentDescription = label
                 },
-            enabled = enabled,
-            readOnly = readOnly,
-            leadingIcon = leadingIcon?.let { icon ->
-                {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = if (currentError != null) {
-                            MaterialTheme.colorScheme.error
-                        } else if (showSuccess) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                    )
-                }
-            },
-            trailingIcon = {
-                if (currentError != null) {
-                    Icon(
-                        Icons.Default.Error,
-                        contentDescription = "エラー",
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                } else if (showSuccess) {
-                    Icon(
-                        Icons.Default.CheckCircle,
-                        contentDescription = "OK",
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                } else {
-                    trailingIcon?.invoke()
-                }
-            },
-            isError = currentError != null,
-            visualTransformation = visualTransformation,
-            keyboardOptions = keyboardOptions,
-            keyboardActions = keyboardActions,
-            maxLines = maxLines,
             colors = TextFieldDefaults.colors(
-                focusedIndicatorColor = if (currentError != null) {
-                    MaterialTheme.colorScheme.error
-                } else if (showSuccess) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.primary
-                },
-                unfocusedIndicatorColor = if (currentError != null) {
-                    MaterialTheme.colorScheme.error.copy(alpha = 0.5f)
-                } else if (showSuccess) {
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
-                } else {
-                    MaterialTheme.colorScheme.outline
-                }
-            ),
-            placeholder = hint?.let { { Text(it) } }
+                focusedContainerColor = Color.Transparent,
+                unfocusedContainerColor = Color.Transparent,
+                errorContainerColor = Color.Transparent,
+                focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                unfocusedIndicatorColor = MaterialTheme.colorScheme.outline,
+                errorIndicatorColor = MaterialTheme.colorScheme.error,
+                focusedLabelColor = if (showError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                unfocusedLabelColor = if (showError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+            )
         )
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // エラーメッセージ
-        AnimatedVisibility(
-            visible = currentError != null,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
-        ) {
-            currentError?.let { error ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(start = 4.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Error,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = error,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
+        // 情報・エラー・成功メッセージ
+        AnimatedVisibility(visible = info != null && !showError && !showSuccess, enter = fadeIn(), exit = fadeOut()) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                Icon(Icons.Default.Info, contentDescription = "情報", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = info ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.semantics { contentDescription = "情報: $info" })
             }
         }
-
-        // 成功メッセージ
-        AnimatedVisibility(
-            visible = currentSuccess != null && showSuccess,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
-        ) {
-            currentSuccess?.let { success ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(start = 4.dp)
-                ) {
-                    Icon(
-                        Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = success,
-                        color = MaterialTheme.colorScheme.primary,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
+        AnimatedVisibility(visible = showError && currentError != null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                Icon(Icons.Default.Error, contentDescription = "エラー", tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = currentError ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.semantics { contentDescription = "エラー: $currentError" })
             }
         }
-
-        // 補足情報
-        AnimatedVisibility(
-            visible = info != null && !showError && !showSuccess,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
-        ) {
-            info?.let {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(start = 4.dp)
-                ) {
-                    Icon(
-                        Icons.Default.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = it,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
+        AnimatedVisibility(visible = showSuccess && currentSuccess != null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {
+                Icon(Icons.Default.CheckCircle, contentDescription = "成功", tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(text = currentSuccess ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.semantics { contentDescription = "成功: $currentSuccess" })
             }
         }
     }

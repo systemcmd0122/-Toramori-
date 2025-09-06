@@ -6,7 +6,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -27,7 +27,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -44,16 +44,21 @@ fun LoadingButton(
     contentPadding: PaddingValues = ButtonDefaults.ContentPadding
 ) {
     Column(modifier = modifier) {
+        val buttonModifier = Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                contentDescription = if (isLoading) "処理中"
+                else if (error != null) "エラー: $error"
+                else text
+            }
         if (isOutlined) {
             OutlinedButton(
                 onClick = onClick,
                 enabled = enabled && !isLoading,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics(mergeDescendants = true) {},
+                modifier = buttonModifier,
                 contentPadding = contentPadding,
                 border = if (error != null) {
-                    BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                    BorderStroke(2.dp, MaterialTheme.colorScheme.error)
                 } else {
                     BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
                 },
@@ -72,10 +77,9 @@ fun LoadingButton(
             Button(
                 onClick = onClick,
                 enabled = enabled && !isLoading,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .semantics(mergeDescendants = true) {},
+                modifier = buttonModifier,
                 contentPadding = contentPadding,
+                shape = MaterialTheme.shapes.medium,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = if (error != null) {
                         MaterialTheme.colorScheme.errorContainer
@@ -94,27 +98,22 @@ fun LoadingButton(
                 ButtonContent(text, isLoading, error)
             }
         }
-
-        // エラーメッセージ表示
+        // エラーメッセージ表示（アクセシビリティ強化）
         if (error != null) {
             Spacer(modifier = Modifier.height(4.dp))
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
                     Icons.Default.Error,
                     contentDescription = "エラー",
                     tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = error,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Start,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.semantics { contentDescription = "エラー: $error" }
                 )
             }
         }
@@ -122,59 +121,29 @@ fun LoadingButton(
 }
 
 @Composable
-private fun ButtonContent(
-    text: String,
-    isLoading: Boolean,
-    error: String?
-) {
-    Box(
-        contentAlignment = Alignment.Center
-    ) {
+private fun ButtonContent(text: String, isLoading: Boolean, error: String?) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center) {
         AnimatedContent(
             targetState = isLoading,
             transitionSpec = {
-                fadeIn(animationSpec = tween(200)) togetherWith
-                        fadeOut(animationSpec = tween(200))
+                fadeIn(animationSpec = tween(200)) togetherWith fadeOut(animationSpec = tween(200))
             },
-            label = "LoadingButtonAnimation"
+            label = "LoadingButtonContent"
         ) { loading ->
             if (loading) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = if (error != null) {
-                            MaterialTheme.colorScheme.onErrorContainer
-                        } else {
-                            MaterialTheme.colorScheme.onPrimary
-                        }
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "処理中...",
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                }
-            } else {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    if (error != null) {
-                        Icon(
-                            Icons.Default.Error,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-                    Text(
-                        text = text,
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                }
+                CircularProgressIndicator(
+                    color = if (error != null) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimary,
+                    strokeWidth = 2.5.dp,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
             }
         }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            textAlign = TextAlign.Center,
+            maxLines = 1
+        )
     }
 }

@@ -2,11 +2,9 @@ package com.example.e_zuka
 
 import android.app.Application
 import androidx.compose.ui.text.intl.Locale
-import com.example.e_zuka.utils.NotificationUtils
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import com.google.firebase.FirebaseApp
-import com.google.firebase.messaging.FirebaseMessaging
 
 class EzukaApplication : Application() {
     override fun onCreate() {
@@ -15,16 +13,6 @@ class EzukaApplication : Application() {
         // Firebase初期化
         FirebaseApp.initializeApp(this)
 
-        // 通知チャンネルの作成
-        NotificationUtils.createNotificationChannels(this)
-
-        // FCMトークンの取得（デバッグ用）
-        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
-            if (task.isSuccessful) {
-                val token = task.result
-                println("FCM Token: $token")
-            }
-        }
 
         // Google Play Servicesの可用性チェック
         val availability = GoogleApiAvailability.getInstance()

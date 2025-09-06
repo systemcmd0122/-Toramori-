@@ -2,14 +2,8 @@ package com.example.e_zuka.ui.settings
 
 import android.os.Build
 import androidx.annotation.RequiresApi
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,24 +21,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBox
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.AccountCircle
-import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -54,12 +40,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
@@ -68,6 +52,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -78,14 +63,16 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.DialogProperties
 import com.example.e_zuka.ui.components.LoadingButton
 import com.example.e_zuka.ui.components.PrivacyPolicyDialog
+import com.example.e_zuka.ui.settings.SettingComponents.ConfirmationDialog
+import com.example.e_zuka.ui.settings.SettingComponents.SkillDialog
 import com.example.e_zuka.viewmodel.AuthViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
@@ -106,23 +93,45 @@ fun SettingsScreen(
 
     // ユーザー情報の状態管理
     var currentUser by remember { mutableStateOf(user) }
-    var showPrivacyPolicyDialog by remember { mutableStateOf(false) }
-    var showLogoutConfirmDialog by remember { mutableStateOf(false) }
+    var dialogState by remember { mutableStateOf<SettingsDialogState>(SettingsDialogState.None) }
 
     // プロフィール更新用の状態
     var isUpdatingProfile by remember { mutableStateOf(false) }
 
-    // 得意なこと・資格の編集用状態
-    var skills by remember { mutableStateOf(user.metadata?.let { (user as? com.example.e_zuka.data.model.UserData)?.skills } ?: emptyList<String>()) }
+    // 得意なこと・資格の管理用のmutableStateList
+    val skills = remember { mutableStateListOf<String>() }
+
+    // メッセージの監視
+    LaunchedEffect(viewModel) {
+        viewModel.errorMessage.collect { message ->
+            message?.let {
+                snackbarHostState.showSnackbar(it)
+                viewModel.clearError()
+            }
+        }
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.successMessage.collect { message ->
+            message?.let {
+                snackbarHostState.showSnackbar(it)
+                viewModel.clearSuccessMessage()
+            }
+        }
+    }
 
     // 初回ロード時に得意なことを取得
     LaunchedEffect(Unit) {
         viewModel.loadSkills { loadedSkills ->
-            skills = loadedSkills
+            skills.clear()
+            skills.addAll(loadedSkills)
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(modifier = modifier
+        .fillMaxSize()
+        .semantics { contentDescription = "設定画面" }
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -133,7 +142,11 @@ fun SettingsScreen(
                     Text(
                         text = "設定",
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.semantics {
+                            val heading = null
+                            heading
+                        }
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -146,61 +159,37 @@ fun SettingsScreen(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // Profile Section with enhanced UI
+                // プロフィールカード
                 EnhancedProfileCard(
                     user = currentUser,
                     isUpdatingProfile = isUpdatingProfile,
-                    onProfileUpdate = { updatedUser: FirebaseUser ->
+                    onProfileUpdate = { updatedUser ->
                         currentUser = updatedUser
                     },
                     onUpdateStart = { isUpdatingProfile = true },
                     onUpdateEnd = { isUpdatingProfile = false },
-                    onShowMessage = { message: String ->
+                    onShowMessage = { message ->
                         coroutineScope.launch {
                             snackbarHostState.showSnackbar(message)
                         }
-                    }
+                    },
+                    modifier = Modifier.semantics { contentDescription = "プロフィール情報" }
                 )
 
-                // Email Verification Section
-                AnimatedVisibility(
-                    visible = currentUser.providerData.any { it.providerId == "password" } && !currentUser.isEmailVerified,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically()
-                ) {
+                // メール認証カード（必要な場合）
+                if (currentUser.providerData.any { it.providerId == "password" } && !currentUser.isEmailVerified) {
                     EmailVerificationCard(
                         viewModel = viewModel,
                         isLoading = isLoading,
                         coroutineScope = coroutineScope,
-                        onUserUpdate = { updatedUser: FirebaseUser ->
+                        onUserUpdate = { updatedUser ->
                             currentUser = updatedUser
                         },
-                        onShowMessage = { message: String ->
+                        onShowMessage = { message ->
                             coroutineScope.launch {
                                 snackbarHostState.showSnackbar(message)
                             }
                         }
-                    )
-                }
-
-                // Account Settings Section
-                SettingsSection(
-                    title = "アカウント設定",
-                    icon = Icons.Default.AccountBox
-                ) {
-                    // 表示名変更は上記のプロフィールカードで直接編集可能にしたので削除
-                }
-
-                // Privacy Settings Section
-                SettingsSection(
-                    title = "プライバシー設定",
-                    icon = Icons.Default.Lock
-                ) {
-                    SettingItem(
-                        title = "プライバシーポリシー",
-                        subtitle = "当アプリのプライバシーポリシーを確認",
-                        icon = Icons.Outlined.Info,
-                        onClick = { showPrivacyPolicyDialog = true }
                     )
                 }
 
@@ -209,150 +198,186 @@ fun SettingsScreen(
                     title = "得意なこと・資格",
                     icon = Icons.Default.CheckCircle
                 ) {
-                    var showAddDialog by remember { mutableStateOf(false) }
-                    var showEditDialog by remember { mutableStateOf(false) }
-                    var showDeleteDialog by remember { mutableStateOf(false) }
-                    var skillToEdit by remember { mutableStateOf("") }
-                    var skillToDeleteIndex by remember { mutableStateOf(-1) }
-                    var editIndex by remember { mutableStateOf(-1) }
-
                     Column(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         modifier = Modifier.padding(16.dp)
                     ) {
                         skills.forEachIndexed { index, skill ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(skill, modifier = Modifier.weight(1f))
-                                IconButton(onClick = {
-                                    skillToEdit = skill
-                                    editIndex = index
-                                    showEditDialog = true
-                                }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "編集")
-                                }
-                                IconButton(onClick = {
-                                    skillToDeleteIndex = index
-                                    showDeleteDialog = true
-                                }) {
-                                    Icon(Icons.Default.Close, contentDescription = "削除")
-                                }
-                            }
+                            SkillItem(
+                                skill = skill,
+                                onEdit = {
+                                    dialogState = SettingsDialogState.EditSkill(index, skill)
+                                },
+                                onDelete = {
+                                    dialogState = SettingsDialogState.DeleteSkill(index, skill)
+                                },
+                                modifier = Modifier.semantics { contentDescription = "得意なこと: $skill" }
+                            )
                         }
                         OutlinedButton(
-                            onClick = { showAddDialog = true },
-                            modifier = Modifier.fillMaxWidth()
+                            onClick = { dialogState = SettingsDialogState.AddSkill() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .semantics { contentDescription = "得意なことを追加" }
                         ) {
                             Text("得意なことを追加")
                         }
                     }
+                }
 
-                    // 追加ダイアログ
-                    if (showAddDialog) {
-                        SkillInputDialog(
-                            title = "得意なことを追加",
-                            initialValue = "",
-                            onConfirm = { value ->
-                                if (value.isNotBlank()) {
-                                    viewModel.addSkill(value) { success ->
-                                        if (success) {
-                                            skills = skills + value
-                                            coroutineScope.launch {
-                                                snackbarHostState.showSnackbar("得意なことを追加しました")
-                                            }
-                                        } else {
-                                            coroutineScope.launch {
-                                                snackbarHostState.showSnackbar("得意なことの追加に失敗しました")
-                                            }
-                                        }
-                                    }
-                                }
-                                showAddDialog = false
-                            },
-                            onDismiss = { showAddDialog = false }
-                        )
-                    }
-                    // 編集ダイアログ
-                    if (showEditDialog) {
-                        SkillInputDialog(
-                            title = "得意なことを編集",
-                            initialValue = skillToEdit,
-                            onConfirm = { value ->
-                                if (value.isNotBlank() && editIndex >= 0) {
-                                    skills = skills.toMutableList().apply { set(editIndex, value) }
-                                    viewModel.updateSkills(skills)
-                                    coroutineScope.launch {
-                                        snackbarHostState.showSnackbar("得意なことを編集しました")
-                                    }
-                                }
-                                showEditDialog = false
-                            },
-                            onDismiss = { showEditDialog = false }
-                        )
-                    }
-                    // 削除確認ダイアログ
-                    if (showDeleteDialog && skillToDeleteIndex >= 0) {
-                        AlertDialog(
-                            onDismissRequest = { showDeleteDialog = false },
-                            title = { Text("削除の確認") },
-                            text = { Text("本当に削除しますか？") },
-                            confirmButton = {
-                                TextButton(onClick = {
-                                    skills = skills.toMutableList().apply { removeAt(skillToDeleteIndex) }
-                                    viewModel.updateSkills(skills)
-                                    coroutineScope.launch {
-                                        snackbarHostState.showSnackbar("削除しました")
-                                    }
-                                    showDeleteDialog = false
-                                }) {
-                                    Text("削除")
-                                }
-                            },
-                            dismissButton = {
-                                TextButton(onClick = { showDeleteDialog = false }) {
-                                    Text("キャンセル")
-                                }
-                            }
-                        )
-                    }
+                // 設定セクション
+                SettingsSection(
+                    title = "設定",
+                    icon = Icons.Default.Settings
+                ) {
+                    SettingItem(
+                        title = "プライバシーポリシー",
+                        subtitle = "アプリのプライバシーポリシーを確認",
+                        icon = Icons.Default.Lock,
+                        onClick = { dialogState = SettingsDialogState.PrivacyPolicy },
+                        modifier = Modifier.semantics { contentDescription = "プライバシーポリシー" }
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Logout Button
+                // ログアウトボタン
                 LoadingButton(
                     text = "ログアウト",
                     isLoading = isLoading,
-                    onClick = { showLogoutConfirmDialog = true },
-                    modifier = Modifier.fillMaxWidth()
+                    onClick = { dialogState = SettingsDialogState.LogoutConfirm },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics { contentDescription = "ログアウト" }
                 )
             }
         }
 
-        // Snackbar Host
+        // ダイアログの表示
+        when (val state = dialogState) {
+            is SettingsDialogState.AddSkill -> {
+                SkillDialog(
+                    title = "得意なことを追加",
+                    initialValue = state.initialValue,
+                    onConfirm = { value: String ->
+                        val trimmed = value.trim()
+                        if (trimmed.isNotBlank()) {
+                            skills.add(trimmed)
+                            viewModel.updateSkills(skills.toList())
+                        }
+                        dialogState = SettingsDialogState.None
+                    },
+                    onDismiss = { dialogState = SettingsDialogState.None },
+                    validateSkill = { skill: String ->
+                        val trimmed = skill.trim()
+                        when {
+                            trimmed.isBlank() -> "得意なことを入力してください"
+                            trimmed.length > 50 -> "50文字以内で入力してください"
+                            skills.any { it.equals(trimmed, ignoreCase = true) } -> "既に登録されています"
+                            else -> null
+                        }
+                    }
+                )
+            }
+            is SettingsDialogState.EditSkill -> {
+                SkillDialog(
+                    title = "得意なことを編集",
+                    initialValue = state.currentValue,
+                    onConfirm = { value: String ->
+                        val trimmed = value.trim()
+                        if (trimmed.isNotBlank()) {
+                            skills[state.skillId] = trimmed
+                            viewModel.updateSkills(skills.toList())
+                        }
+                        dialogState = SettingsDialogState.None
+                    },
+                    onDismiss = { dialogState = SettingsDialogState.None },
+                    validateSkill = { skill: String ->
+                        val trimmed = skill.trim()
+                        when {
+                            trimmed.isBlank() -> "得意なことを入力してください"
+                            trimmed.length > 50 -> "50文字以内で入力してください"
+                            skills.anyIndexed { i, s -> i != state.skillId && s.equals(trimmed, ignoreCase = true) } -> "既に登録されています"
+                            else -> null
+                        }
+                    }
+                )
+            }
+            is SettingsDialogState.DeleteSkill -> {
+                ConfirmationDialog(
+                    title = "削除の確認",
+                    message = "「${state.skillName}」を削除しますか？",
+                    confirmText = "削除",
+                    onConfirm = {
+                        skills.removeAt(state.skillId)
+                        viewModel.updateSkills(skills.toList())
+                        dialogState = SettingsDialogState.None
+                    },
+                    onDismiss = { dialogState = SettingsDialogState.None }
+                )
+            }
+            SettingsDialogState.LogoutConfirm -> {
+                ConfirmationDialog(
+                    title = "ログアウトの確認",
+                    message = "本当にログアウトしますか？",
+                    confirmText = "ログアウト",
+                    onConfirm = {
+                        viewModel.signOut()
+                        dialogState = SettingsDialogState.None
+                    },
+                    onDismiss = { dialogState = SettingsDialogState.None }
+                )
+            }
+            SettingsDialogState.PrivacyPolicy -> {
+                PrivacyPolicyDialog(
+                    onDismiss = { dialogState = SettingsDialogState.None }
+                )
+            }
+            SettingsDialogState.None -> {
+                // 何も表示しない
+            }
+        }
+
+        // Snackbarホスト
         SnackbarHost(
             hostState = snackbarHostState,
-            modifier = Modifier.align(Alignment.BottomCenter)
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .semantics { contentDescription = "通知" }
         )
     }
+}
 
-    // Dialogs
-    if (showPrivacyPolicyDialog) {
-        PrivacyPolicyDialog(
-            onDismiss = { showPrivacyPolicyDialog = false }
+@Composable
+private fun SkillItem(
+    skill: String,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Text(
+            text = skill,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.weight(1f)
         )
-    }
-
-    if (showLogoutConfirmDialog) {
-        LogoutConfirmDialog(
-            onDismiss = { showLogoutConfirmDialog = false },
-            onConfirm = {
-                viewModel.signOut()
-                showLogoutConfirmDialog = false
-            }
-        )
+        IconButton(onClick = onEdit) {
+            Icon(
+                Icons.Default.Edit,
+                contentDescription = "編集",
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+        IconButton(onClick = onDelete) {
+            Icon(
+                Icons.Default.Close,
+                contentDescription = "削除",
+                tint = MaterialTheme.colorScheme.error
+            )
+        }
     }
 }
 
@@ -363,7 +388,8 @@ private fun EnhancedProfileCard(
     onProfileUpdate: (FirebaseUser) -> Unit,
     onUpdateStart: () -> Unit,
     onUpdateEnd: () -> Unit,
-    onShowMessage: (String) -> Unit
+    onShowMessage: (String) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     var isEditingDisplayName by remember { mutableStateOf(false) }
     var tempDisplayName by remember { mutableStateOf(user.displayName ?: "") }
@@ -379,7 +405,7 @@ private fun EnhancedProfileCard(
     )
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.secondaryContainer
         ),
@@ -711,7 +737,7 @@ private fun EmailVerificationCard(
 @Composable
 private fun SettingsSection(
     title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     content: @Composable () -> Unit
 ) {
     Card(
@@ -748,8 +774,9 @@ private fun SettingsSection(
 private fun SettingItem(
     title: String,
     subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    onClick: () -> Unit
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     ListItem(
         headlineContent = {
@@ -775,77 +802,20 @@ private fun SettingItem(
         },
         trailingContent = {
             Icon(
-                Icons.Default.ArrowForward,
+                Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         },
-        modifier = Modifier
+        modifier = modifier
             .clickable(onClick = onClick)
             .fillMaxWidth()
     )
 }
 
-@Composable
-private fun LogoutConfirmDialog(
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text("ログアウトの確認")
-        },
-        text = {
-            Text("本当にログアウトしますか？")
-        },
-        confirmButton = {
-            TextButton(
-                onClick = onConfirm
-            ) {
-                Text("ログアウト")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("キャンセル")
-            }
-        }
-    )
-}
-
-// ダイアログ用Composable
-@Composable
-fun SkillInputDialog(
-    title: String,
-    initialValue: String,
-    onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var value by remember { mutableStateOf(initialValue) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            Column {
-                TextField(
-                    value = value,
-                    onValueChange = { value = it },
-                    placeholder = { Text("例: 日曜大工、電気工事士") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(value) }, enabled = value.isNotBlank()) {
-                Text("保存")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("キャンセル")
-            }
-        }
-    )
+fun <T> List<T>.anyIndexed(predicate: (Int, T) -> Boolean): Boolean {
+    for (i in indices) {
+        if (predicate(i, this[i])) return true
+    }
+    return false
 }
