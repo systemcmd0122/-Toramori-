@@ -2,17 +2,23 @@ package com.example.e_zuka
 
 import android.app.Application
 import androidx.compose.ui.text.intl.Locale
+import com.example.e_zuka.data.settings.AppSettings
 import com.google.android.gms.common.ConnectionResult
 import com.google.android.gms.common.GoogleApiAvailability
 import com.google.firebase.FirebaseApp
 
 class EzukaApplication : Application() {
+    lateinit var appSettings: AppSettings
+        private set
+
     override fun onCreate() {
         super.onCreate()
 
+        // AppSettingsの初期化
+        appSettings = AppSettings(this)
+
         // Firebase初期化
         FirebaseApp.initializeApp(this)
-
 
         // Google Play Servicesの可用性チェック
         val availability = GoogleApiAvailability.getInstance()
@@ -42,6 +48,18 @@ class EzukaApplication : Application() {
             announceTimeouts = true,
             useHighContrast = false
         )
+    }
+
+    companion object {
+        @Volatile
+        private var instance: EzukaApplication? = null
+
+        fun getInstance(): EzukaApplication =
+            instance ?: throw IllegalStateException("Application not initialized")
+    }
+
+    init {
+        instance = this
     }
 }
 

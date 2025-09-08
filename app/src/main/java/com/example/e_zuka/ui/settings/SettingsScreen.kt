@@ -64,16 +64,19 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.e_zuka.ui.components.LoadingButton
 import com.example.e_zuka.ui.components.PrivacyPolicyDialog
 import com.example.e_zuka.ui.settings.SettingComponents.ConfirmationDialog
 import com.example.e_zuka.ui.settings.SettingComponents.SkillDialog
 import com.example.e_zuka.viewmodel.AuthViewModel
+import com.example.e_zuka.viewmodel.ThemeSettingsViewModel
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.launch
@@ -84,6 +87,9 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(
     user: FirebaseUser,
     viewModel: AuthViewModel,
+    themeViewModel: ThemeSettingsViewModel = viewModel(
+        factory = ThemeSettingsViewModel.Factory(LocalContext.current)
+    ),
     modifier: Modifier = Modifier
 ) {
     val isLoading by viewModel.isLoading.collectAsState()
@@ -142,16 +148,11 @@ fun SettingsScreen(
                     Text(
                         text = "設定",
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.semantics {
-                            val heading = null
-                            heading
-                        }
+                        fontWeight = FontWeight.Bold
                     )
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
             )
 
@@ -172,8 +173,7 @@ fun SettingsScreen(
                         coroutineScope.launch {
                             snackbarHostState.showSnackbar(message)
                         }
-                    },
-                    modifier = Modifier.semantics { contentDescription = "プロフィール情報" }
+                    }
                 )
 
                 // メール認証カード（必要な場合）
@@ -192,6 +192,12 @@ fun SettingsScreen(
                         }
                     )
                 }
+
+                // 表示設定カード
+                AppearanceSettingsCard(
+                    themeViewModel = themeViewModel,
+                    modifier = Modifier.semantics { contentDescription = "表示設定" }
+                )
 
                 // 得意なこと・資格セクション
                 SettingsSection(
@@ -227,7 +233,7 @@ fun SettingsScreen(
 
                 // 設定セクション
                 SettingsSection(
-                    title = "設定",
+                    title = "その他の設定",
                     icon = Icons.Default.Settings
                 ) {
                     SettingItem(

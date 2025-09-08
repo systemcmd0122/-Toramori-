@@ -56,6 +56,7 @@ import com.example.e_zuka.ui.members.RegionMembersScreen
 import com.example.e_zuka.ui.settings.SettingsScreen
 import com.example.e_zuka.viewmodel.AuthViewModel
 import com.example.e_zuka.viewmodel.RegionMembersViewModel
+import com.example.e_zuka.viewmodel.ThemeSettingsViewModel
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.delay
 
@@ -71,6 +72,7 @@ data class NavigationItem(
 @Composable
 fun MainApp(
     viewModel: AuthViewModel,
+    themeViewModel: ThemeSettingsViewModel,
     modifier: Modifier = Modifier
 ) {
     val authState by viewModel.authState.collectAsState()
@@ -95,75 +97,105 @@ fun MainApp(
         }
     }
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { paddingValues ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
-            Column(
-                modifier = Modifier.fillMaxSize()
+    // テーマ設定の監視
+    val themeConfig by themeViewModel.themeConfig.collectAsState()
+
+    // 高コントラストモードの適用
+    val colors = if (themeConfig.isHighContrast) {
+        MaterialTheme.colorScheme.copy(
+            surface = MaterialTheme.colorScheme.background,
+            onSurface = MaterialTheme.colorScheme.onBackground,
+            surfaceVariant = MaterialTheme.colorScheme.background,
+            onSurfaceVariant = MaterialTheme.colorScheme.onBackground
+        )
+    } else {
+        MaterialTheme.colorScheme
+    }
+
+    MaterialTheme(
+        colorScheme = colors,
+        typography = MaterialTheme.typography.copy(
+            bodyLarge = MaterialTheme.typography.bodyLarge.copy(
+                fontSize = MaterialTheme.typography.bodyLarge.fontSize * themeConfig.fontScale
+            ),
+            bodyMedium = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = MaterialTheme.typography.bodyMedium.fontSize * themeConfig.fontScale
+            ),
+            bodySmall = MaterialTheme.typography.bodySmall.copy(
+                fontSize = MaterialTheme.typography.bodySmall.fontSize * themeConfig.fontScale
+            )
+        )
+    ) {
+        Scaffold(
+            modifier = modifier.fillMaxSize(),
+            snackbarHost = { SnackbarHost(snackbarHostState) }
+        ) { paddingValues ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
             ) {
-                androidx.compose.animation.AnimatedVisibility(
-                    visible = isContentVisible,
-                    enter = fadeIn() + expandVertically(),
-                    exit = fadeOut() + shrinkVertically(),
+                Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    when (val currentAuthState = authState) {
-                        is AuthState.Loading -> {
-                            LoadingScreen(
-                                message = when (regionAuthState) {
-                                    is RegionAuthState.Loading -> "地域認証状態を確認中..."
-                                    else -> "認証状態を確認中..."
-                                }
-                            )
-                        }
-                        is AuthState.Authenticated -> {
-                            MainScreenWithNavigation(
-                                user = currentAuthState.user,
-                                viewModel = viewModel
-                            )
-                        }
-                        is AuthState.UserNameVerificationRequired -> {
-                            UserNameVerificationScreen(
-                                user = currentAuthState.user,
-                                viewModel = viewModel
-                            )
-                        }
-                        is AuthState.RegionVerificationRequired -> {
-                            if (regionAuthState is RegionAuthState.Verified) {
-                                // 地域認証が完了している場合は必ずホーム画面に遷移
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = isContentVisible,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically(),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        when (val currentAuthState = authState) {
+                            is AuthState.Loading -> {
+                                LoadingScreen(
+                                    message = when (regionAuthState) {
+                                        is RegionAuthState.Loading -> "地域認証状態を確認中..."
+                                        else -> "認証状態を確認中..."
+                                    }
+                                )
+                            }
+                            is AuthState.Authenticated -> {
                                 MainScreenWithNavigation(
                                     user = currentAuthState.user,
                                     viewModel = viewModel
                                 )
-                            } else {
-                                RegionVerificationScreen(
+                            }
+                            is AuthState.UserNameVerificationRequired -> {
+                                UserNameVerificationScreen(
                                     user = currentAuthState.user,
                                     viewModel = viewModel
                                 )
                             }
-                        }
-                        is AuthState.Unauthenticated -> {
-                            AuthScreen(viewModel = viewModel)
-                        }
-                        is AuthState.Error -> {
-                            ErrorScreen(
-                                message = currentAuthState.message,
-                                onRetry = { viewModel.signOut() }
-                            )
+                            is AuthState.RegionVerificationRequired -> {
+                                if (regionAuthState is RegionAuthState.Verified) {
+                                    // 地域認証が完了している場合は必ずホーム画面に遷移
+                                    MainScreenWithNavigation(
+                                        user = currentAuthState.user,
+                                        viewModel = viewModel
+                                    )
+                                } else {
+                                    RegionVerificationScreen(
+                                        user = currentAuthState.user,
+                                        viewModel = viewModel
+                                    )
+                                }
+                            }
+                            is AuthState.Unauthenticated -> {
+                                AuthScreen(viewModel = viewModel)
+                            }
+                            is AuthState.Error -> {
+                                ErrorScreen(
+                                    message = currentAuthState.message,
+                                    onRetry = { viewModel.signOut() }
+                                )
+                            }
                         }
                     }
-                }
 
-                // 初期表示時のアニメーション
-                LaunchedEffect(Unit) {
-                    delay(100) // 少し遅延を入れて、アニメーションをより自然に
-                    isContentVisible = true
+                    // 初期表示時のアニメーション
+                    LaunchedEffect(Unit) {
+                        delay(100) // 少し遅延を入れて、アニメーションをより自然に
+                        isContentVisible = true
+                    }
                 }
             }
         }
