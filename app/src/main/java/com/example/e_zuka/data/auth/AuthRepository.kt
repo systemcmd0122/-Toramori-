@@ -2,7 +2,6 @@ package com.example.e_zuka.data.auth
 
 import android.content.Context
 import android.util.Log
-import com.sadowara.e_zuka.R
 import com.example.e_zuka.data.model.AuthResult
 import com.example.e_zuka.data.model.UserData
 import com.example.e_zuka.data.region.RegionAuthRepository
@@ -34,8 +33,16 @@ class AuthRepository(context: Context) {
     }
 
     init {
+        // safe lookup for default_web_client_id to avoid direct R reference
+        val clientIdResId = context.resources.getIdentifier(
+            "default_web_client_id",
+            "string",
+            context.packageName
+        )
+        val clientId = if (clientIdResId != 0) context.getString(clientIdResId) else ""
+
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestIdToken(context.getString(R.string.default_web_client_id))
+            .requestIdToken(clientId)
             .requestEmail()
             .build()
         googleSignInClient = GoogleSignIn.getClient(context, gso)

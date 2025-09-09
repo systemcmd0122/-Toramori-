@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -40,14 +41,13 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -71,6 +71,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.e_zuka.ui.components.AppTopBar
 import com.example.e_zuka.ui.components.LoadingButton
 import com.example.e_zuka.ui.components.PrivacyPolicyDialog
 import com.example.e_zuka.ui.settings.SettingComponents.ConfirmationDialog
@@ -87,11 +88,13 @@ import kotlinx.coroutines.launch
 fun SettingsScreen(
     user: FirebaseUser,
     viewModel: AuthViewModel,
-    themeViewModel: ThemeSettingsViewModel = viewModel(
-        factory = ThemeSettingsViewModel.Factory(LocalContext.current)
-    ),
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    themeViewModel: ThemeSettingsViewModel? = null
 ) {
+    // themeViewModel をオプション引数として扱い、null の場合は内部で取得
+    val resolvedThemeViewModel: ThemeSettingsViewModel = themeViewModel
+        ?: viewModel(factory = ThemeSettingsViewModel.Factory(LocalContext.current))
+
     val isLoading by viewModel.isLoading.collectAsState()
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
@@ -134,129 +137,119 @@ fun SettingsScreen(
         }
     }
 
-    Box(modifier = modifier
-        .fillMaxSize()
-        .semantics { contentDescription = "設定画面" }
-    ) {
+    Scaffold(
+        modifier = modifier
+            .fillMaxSize()
+            .semantics { contentDescription = "設定画面" },
+        topBar = {
+            AppTopBar(titleText = "設定")
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(scrollState)
+                .padding(innerPadding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = "設定",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
+            // プロフィールカード
+            EnhancedProfileCard(
+                user = currentUser,
+                isUpdatingProfile = isUpdatingProfile,
+                onProfileUpdate = { updatedUser ->
+                    currentUser = updatedUser
                 },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
+                onUpdateStart = { isUpdatingProfile = true },
+                onUpdateEnd = { isUpdatingProfile = false },
+                onShowMessage = { message ->
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar(message)
+                    }
+                }
             )
 
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                // プロフィールカード
-                EnhancedProfileCard(
-                    user = currentUser,
-                    isUpdatingProfile = isUpdatingProfile,
-                    onProfileUpdate = { updatedUser ->
+            // メール認証カード（必要な場合）
+            if (currentUser.providerData.any { it.providerId == "password" } && !currentUser.isEmailVerified) {
+                EmailVerificationCard(
+                    viewModel = viewModel,
+                    isLoading = isLoading,
+                    coroutineScope = coroutineScope,
+                    onUserUpdate = { updatedUser ->
                         currentUser = updatedUser
                     },
-                    onUpdateStart = { isUpdatingProfile = true },
-                    onUpdateEnd = { isUpdatingProfile = false },
                     onShowMessage = { message ->
                         coroutineScope.launch {
                             snackbarHostState.showSnackbar(message)
                         }
                     }
                 )
+            }
 
-                // メール認証カード（必要な場合）
-                if (currentUser.providerData.any { it.providerId == "password" } && !currentUser.isEmailVerified) {
-                    EmailVerificationCard(
-                        viewModel = viewModel,
-                        isLoading = isLoading,
-                        coroutineScope = coroutineScope,
-                        onUserUpdate = { updatedUser ->
-                            currentUser = updatedUser
-                        },
-                        onShowMessage = { message ->
-                            coroutineScope.launch {
-                                snackbarHostState.showSnackbar(message)
-                            }
-                        }
-                    )
-                }
+            // 表示設定カード
+            AppearanceSettingsCard(
+                themeViewModel = resolvedThemeViewModel,
+                modifier = Modifier.semantics { contentDescription = "表示設定" }
+            )
 
-                // 表示設定カード
-                AppearanceSettingsCard(
-                    themeViewModel = themeViewModel,
-                    modifier = Modifier.semantics { contentDescription = "表示設定" }
-                )
-
-                // 得意なこと・資格セクション
-                SettingsSection(
-                    title = "得意なこと・資格",
-                    icon = Icons.Default.CheckCircle
+            // 得意なこと・資格セクション
+            SettingsSection(
+                title = "得意なこと・資格",
+                icon = Icons.Default.CheckCircle
+            ) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(16.dp)
                 ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(16.dp)
+                    skills.forEachIndexed { index, skill ->
+                        SkillItem(
+                            skill = skill,
+                            onEdit = {
+                                dialogState = SettingsDialogState.EditSkill(index, skill)
+                            },
+                            onDelete = {
+                                dialogState = SettingsDialogState.DeleteSkill(index, skill)
+                            },
+                            modifier = Modifier.semantics { contentDescription = "得意なこと: $skill" }
+                        )
+                    }
+                    OutlinedButton(
+                        onClick = { dialogState = SettingsDialogState.AddSkill() },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics { contentDescription = "得意なことを追加" }
                     ) {
-                        skills.forEachIndexed { index, skill ->
-                            SkillItem(
-                                skill = skill,
-                                onEdit = {
-                                    dialogState = SettingsDialogState.EditSkill(index, skill)
-                                },
-                                onDelete = {
-                                    dialogState = SettingsDialogState.DeleteSkill(index, skill)
-                                },
-                                modifier = Modifier.semantics { contentDescription = "得意なこと: $skill" }
-                            )
-                        }
-                        OutlinedButton(
-                            onClick = { dialogState = SettingsDialogState.AddSkill() },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .semantics { contentDescription = "得意なことを追加" }
-                        ) {
-                            Text("得意なことを追加")
-                        }
+                        Text("得意なことを追加")
                     }
                 }
+            }
 
-                // 設定セクション
-                SettingsSection(
-                    title = "その他の設定",
-                    icon = Icons.Default.Settings
-                ) {
-                    SettingItem(
-                        title = "プライバシーポリシー",
-                        subtitle = "アプリのプライバシーポリシーを確認",
-                        icon = Icons.Default.Lock,
-                        onClick = { dialogState = SettingsDialogState.PrivacyPolicy },
-                        modifier = Modifier.semantics { contentDescription = "プライバシーポリシー" }
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // ログアウトボタン
-                LoadingButton(
-                    text = "ログアウト",
-                    isLoading = isLoading,
-                    onClick = { dialogState = SettingsDialogState.LogoutConfirm },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics { contentDescription = "ログアウト" }
+            // 設定セクション
+            SettingsSection(
+                title = "その他の設定",
+                icon = Icons.Default.Settings
+            ) {
+                SettingItem(
+                    title = "プライバシーポリシー",
+                    subtitle = "アプリのプライバシーポリシーを確認",
+                    icon = Icons.Default.Lock,
+                    onClick = { dialogState = SettingsDialogState.PrivacyPolicy },
+                    modifier = Modifier.semantics { contentDescription = "プライバシーポリシー" }
                 )
             }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // ログアウトボタン
+            LoadingButton(
+                text = "ログアウト",
+                isLoading = isLoading,
+                onClick = { dialogState = SettingsDialogState.LogoutConfirm },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .semantics { contentDescription = "ログアウト" }
+            )
         }
 
         // ダイアログの表示
@@ -343,14 +336,6 @@ fun SettingsScreen(
                 // 何も表示しない
             }
         }
-
-        // Snackbarホスト
-        SnackbarHost(
-            hostState = snackbarHostState,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .semantics { contentDescription = "通知" }
-        )
     }
 }
 
@@ -664,7 +649,7 @@ private fun EmailVerificationCard(
             ) {
                 Icon(
                     Icons.Default.Warning,
-                    contentDescription = null,
+                    contentDescription = "メール認証警告アイコン",
                     modifier = Modifier.size(24.dp),
                     tint = MaterialTheme.colorScheme.onErrorContainer
                 )
@@ -703,7 +688,7 @@ private fun EmailVerificationCard(
                 ) {
                     Icon(
                         Icons.Default.Refresh,
-                        contentDescription = null,
+                        contentDescription = "確認メールを再送信",
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -729,7 +714,7 @@ private fun EmailVerificationCard(
                 ) {
                     Icon(
                         Icons.Default.Refresh,
-                        contentDescription = null,
+                        contentDescription = "メール認証状態を更新",
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -760,7 +745,7 @@ private fun SettingsSection(
             ) {
                 Icon(
                     icon,
-                    contentDescription = null,
+                    contentDescription = "$title アイコン",
                     tint = MaterialTheme.colorScheme.primary
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -802,14 +787,14 @@ private fun SettingItem(
         leadingContent = {
             Icon(
                 icon,
-                contentDescription = null,
+                contentDescription = "$title アイコン",
                 tint = MaterialTheme.colorScheme.primary
             )
         },
         trailingContent = {
             Icon(
                 Icons.AutoMirrored.Filled.ArrowForward,
-                contentDescription = null,
+                contentDescription = "次へ",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         },
@@ -817,6 +802,102 @@ private fun SettingItem(
             .clickable(onClick = onClick)
             .fillMaxWidth()
     )
+}
+
+@Composable
+private fun ErrorStateView(
+    message: String,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.errorContainer
+            ),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = "エラー",
+                    modifier = Modifier.size(48.dp),
+                    tint = MaterialTheme.colorScheme.onErrorContainer
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.onErrorContainer
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                androidx.compose.material3.Button(
+                    onClick = onRetry,
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text(
+                        text = "再試行",
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyStateView(
+    message: String,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.fillMaxSize(),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                Icons.Default.Groups,
+                contentDescription = "メンバーがいません",
+                modifier = Modifier.size(64.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            androidx.compose.material3.OutlinedButton(
+                onClick = onRefresh
+            ) {
+                Icon(
+                    Icons.Default.Refresh,
+                    contentDescription = "メンバー一覧を更新",
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("更新")
+            }
+        }
+    }
 }
 
 fun <T> List<T>.anyIndexed(predicate: (Int, T) -> Boolean): Boolean {

@@ -111,7 +111,10 @@ fun ValidatedTextField(
             isError = showError,
             enabled = enabled,
             readOnly = readOnly,
-            leadingIcon = leadingIcon?.let { { Icon(it, contentDescription = null) } },
+            leadingIcon = leadingIcon?.let {
+                // 説明的なcontentDescriptionを付与してTalkBackで分かりやすくする
+                { Icon(it, contentDescription = "$label のアイコン") }
+            },
             trailingIcon = trailingIcon,
             visualTransformation = visualTransformation,
             keyboardOptions = keyboardOptions,
@@ -125,8 +128,9 @@ fun ValidatedTextField(
                     onFocusChange?.invoke(it.isFocused)
                 }
                 .semantics {
-                    if (showError && currentError != null) contentDescription = "エラー: $currentError"
-                    else if (showSuccess && currentSuccess != null) contentDescription = "成功: $currentSuccess"
+                    // フォーカス時およびエラー情報をTalkBack向けに明示
+                    if (showError && currentError != null) contentDescription = "$label, エラー: $currentError"
+                    else if (showSuccess && currentSuccess != null) contentDescription = "$label, 成功: $currentSuccess"
                     else contentDescription = label
                 },
             colors = TextFieldDefaults.colors(
@@ -140,6 +144,7 @@ fun ValidatedTextField(
                 unfocusedLabelColor = if (showError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
             )
         )
+
         // 情報・エラー・成功メッセージ
         AnimatedVisibility(visible = info != null && !showError && !showSuccess, enter = fadeIn(), exit = fadeOut()) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 2.dp)) {

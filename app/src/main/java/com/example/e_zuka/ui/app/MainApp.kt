@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
@@ -36,21 +37,29 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavDestination
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
 import com.example.e_zuka.data.model.AuthState
 import com.example.e_zuka.data.model.RegionAuthState
 import com.example.e_zuka.ui.auth.AuthScreen
 import com.example.e_zuka.ui.auth.RegionVerificationScreen
 import com.example.e_zuka.ui.auth.UserNameVerificationScreen
+import com.example.e_zuka.ui.components.AppTopBar
 import com.example.e_zuka.ui.home.HomeScreen
 import com.example.e_zuka.ui.members.RegionMembersScreen
 import com.example.e_zuka.ui.settings.SettingsScreen
@@ -211,33 +220,77 @@ private fun MainScreenWithNavigation(
 ) {
     val membersViewModel: RegionMembersViewModel = viewModel()
     val regionAuthState by viewModel.regionAuthState.collectAsState()
-    val regionCodeId = (regionAuthState as? RegionAuthState.Verified)?.regionData?.codeId ?: ""
+
+    // navigation routes
+    val HomeRoute = "home"
+    val MembersRoute = "members"
+    val SettingsRoute = "settings"
 
     val navigationItems = listOf(
         NavigationItem(
             title = "ホーム",
             selectedIcon = Icons.Filled.Home,
             unselectedIcon = Icons.Outlined.Home,
-            route = "home"
+            route = HomeRoute
         ),
         NavigationItem(
             title = "メンバー",
             selectedIcon = Icons.Filled.Groups,
             unselectedIcon = Icons.Outlined.Groups,
-            route = "members"
+            route = MembersRoute
         ),
         NavigationItem(
             title = "設定",
             selectedIcon = Icons.Filled.Settings,
             unselectedIcon = Icons.Outlined.Settings,
-            route = "settings"
+            route = SettingsRoute
         )
     )
 
-    var selectedItemIndex by remember { mutableIntStateOf(0) }
+    val navController = rememberNavController()
+    val backStackEntry by navController.currentBackStackEntryAsState()
+    val currentDestination = backStackEntry?.destination
+    val currentRoute = currentDestination?.route ?: HomeRoute
+
+    // determine title from route
+    fun getTitleForDestination(dest: NavDestination?): String {
+        return when (dest?.route) {
+            HomeRoute -> "ホーム"
+            MembersRoute -> "地域のみなさん"
+            SettingsRoute -> "設定"
+            else -> ""
+        }
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
+        topBar = {
+            AppTopBar(
+                titleText = getTitleForDestination(currentDestination),
+                navigationIcon = if (navController.previousBackStackEntry != null) {
+                    {
+                        androidx.compose.material3.IconButton(onClick = { navController.popBackStack() }) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "戻る")
+                        }
+                    }
+                } else null,
+                actions = {
+                    // show refresh on members route
+                    if (currentRoute == MembersRoute) {
+                        androidx.compose.material3.IconButton(
+                            onClick = {
+                                (regionAuthState as? RegionAuthState.Verified)?.let {
+                                    membersViewModel.loadRegionMembers(it.regionData.codeId)
+                                }
+                            },
+                            enabled = true
+                        ) {
+                            Icon(imageVector = Icons.Filled.Groups, contentDescription = "更新")
+                        }
+                    }
+                }
+            )
+        },
         bottomBar = {
             NavigationBar(
                 containerColor = MaterialTheme.colorScheme.surface,
@@ -245,27 +298,27 @@ private fun MainScreenWithNavigation(
                 tonalElevation = 8.dp,
                 modifier = Modifier.navigationBarsPadding()
             ) {
-                navigationItems.forEachIndexed { index, item ->
+                navigationItems.forEach { item ->
                     NavigationBarItem(
-                        selected = selectedItemIndex == index,
-                        onClick = { selectedItemIndex = index },
-                        label = {
-                            Text(
-                                text = item.title,
-                                style = MaterialTheme.typography.labelSmall
-                            )
+                        selected = currentRoute == item.route,
+                        onClick = {
+                            navController.navigate(item.route) {
+                                popUpTo(navController.graph.findStartDestination().id) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
                         },
+                        label = { Text(text = item.title, style = MaterialTheme.typography.labelSmall) },
                         alwaysShowLabel = true,
                         icon = {
                             Icon(
-                                imageVector = if (selectedItemIndex == index) {
-                                    item.selectedIcon
-                                } else {
-                                    item.unselectedIcon
-                                },
+                                imageVector = if (currentRoute == item.route) item.selectedIcon else item.unselectedIcon,
                                 contentDescription = item.title
                             )
                         },
+                        modifier = Modifier.semantics { contentDescription = item.title },
                         colors = NavigationBarItemDefaults.colors(
                             selectedIconColor = MaterialTheme.colorScheme.primary,
                             selectedTextColor = MaterialTheme.colorScheme.primary,
@@ -278,37 +331,23 @@ private fun MainScreenWithNavigation(
             }
         }
     ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-        ) {
-            Column(
-                modifier = Modifier.fillMaxSize()
-            ) {
-                when (selectedItemIndex) {
-                    0 -> {
-                        HomeScreen(
-                            user = user,
-                            viewModel = viewModel,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                    1 -> {
-                        RegionMembersScreen(
-                            user = user,
-                            authViewModel = viewModel,
-                            membersViewModel = membersViewModel,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
-                    2 -> {
-                        SettingsScreen(
-                            user = user,
-                            viewModel = viewModel,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    }
+        Box(modifier = Modifier
+            .fillMaxSize()
+            .padding(innerPadding)) {
+            NavHost(navController = navController, startDestination = HomeRoute, modifier = Modifier.fillMaxSize()) {
+                composable(HomeRoute) {
+                    HomeScreen(user = user, viewModel = viewModel, modifier = Modifier.fillMaxSize())
+                }
+                composable(MembersRoute) {
+                    RegionMembersScreen(
+                        user = user,
+                        authViewModel = viewModel,
+                        membersViewModel = membersViewModel,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+                composable(SettingsRoute) {
+                    SettingsScreen(user = user, viewModel = viewModel, modifier = Modifier.fillMaxSize())
                 }
             }
         }

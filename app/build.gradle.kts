@@ -6,12 +6,14 @@ plugins {
 }
 
 android {
+    // namespaceをプロジェクトのパッケージに合わせて統一
     namespace = "com.sadowara.e_zuka"
     compileSdk = 35
 
     defaultConfig {
         applicationId = "com.sadowara.e_zuka"
         minSdk = 24
+        // targetSdkは35に固定して互換性警告を回避
         targetSdk = 35
         versionCode = 1
         versionName = "1.0"

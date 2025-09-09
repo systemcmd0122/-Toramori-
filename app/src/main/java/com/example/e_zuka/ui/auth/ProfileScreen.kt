@@ -177,7 +177,7 @@ fun ProfileScreen(
                             ) {
                                 Icon(
                                     Icons.Default.ContentCopy,
-                                    contentDescription = "コピー",
+                                    contentDescription = "ユーザーIDをコピー",
                                     tint = MaterialTheme.colorScheme.primary
                                 )
                             }
@@ -214,7 +214,7 @@ fun ProfileScreen(
                         ) {
                             Icon(
                                 if (user.isEmailVerified) Icons.Default.CheckCircle else Icons.Default.Warning,
-                                contentDescription = null,
+                                contentDescription = if (user.isEmailVerified) "メール認証済みアイコン" else "メール未認証アイコン",
                                 modifier = Modifier.size(16.dp),
                                 tint = if (user.isEmailVerified) {
                                     MaterialTheme.colorScheme.primary
@@ -278,7 +278,7 @@ private fun EmailVerificationCard(
             ) {
                 Icon(
                     if (user.isEmailVerified) Icons.Default.CheckCircle else Icons.Default.Warning,
-                    contentDescription = null,
+                    contentDescription = if (user.isEmailVerified) "メール認証済みアイコン" else "メール未認証警告アイコン",
                     modifier = Modifier.size(24.dp),
                     tint = if (user.isEmailVerified) {
                         MaterialTheme.colorScheme.onPrimaryContainer
@@ -327,7 +327,7 @@ private fun EmailVerificationCard(
                     ) {
                         Icon(
                             Icons.Default.Email,
-                            contentDescription = null,
+                            contentDescription = "確認メールを再送信",
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.size(4.dp))
@@ -345,7 +345,7 @@ private fun EmailVerificationCard(
                     ) {
                         Icon(
                             Icons.Default.Refresh,
-                            contentDescription = null,
+                            contentDescription = "メール認証状態を更新",
                             modifier = Modifier.size(16.dp)
                         )
                         Spacer(modifier = Modifier.size(4.dp))

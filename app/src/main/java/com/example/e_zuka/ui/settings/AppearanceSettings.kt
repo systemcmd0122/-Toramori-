@@ -75,7 +75,7 @@ fun AppearanceSettingsCard(
             ) {
                 Icon(
                     imageVector = Icons.Filled.Palette,
-                    contentDescription = null,
+                    contentDescription = "表示設定アイコン",
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(28.dp)
                 )
@@ -209,7 +209,7 @@ fun AppearanceSettingsCard(
                             ) {
                                 Icon(
                                     imageVector = Icons.Filled.Info,
-                                    contentDescription = null,
+                                    contentDescription = "高齢者モード情報アイコン",
                                     tint = MaterialTheme.colorScheme.onPrimaryContainer,
                                     modifier = Modifier
                                         .size(20.dp)
@@ -246,7 +246,7 @@ private fun SettingSection(
         ) {
             Icon(
                 imageVector = icon,
-                contentDescription = null,
+                contentDescription = "$title アイコン",
                 tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.size(20.dp)
             )
@@ -299,7 +299,7 @@ private fun ThemeModeOption(
             Spacer(modifier = Modifier.width(8.dp))
             Icon(
                 imageVector = icon,
-                contentDescription = null,
+                contentDescription = "$title オプションアイコン",
                 tint = if (selected) {
                     MaterialTheme.colorScheme.primary
                 } else {
@@ -358,7 +358,7 @@ private fun AccessibilityOption(
             ) {
                 Icon(
                     imageVector = icon,
-                    contentDescription = null,
+                    contentDescription = "$title アイコン",
                     tint = if (checked) {
                         MaterialTheme.colorScheme.primary
                     } else {

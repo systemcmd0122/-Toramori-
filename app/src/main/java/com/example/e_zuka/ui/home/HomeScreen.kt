@@ -27,43 +27,22 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val regionAuthState by viewModel.regionAuthState.collectAsState()
-    val snackbarHostState = remember { SnackbarHostState() }
     val scrollState = rememberScrollState()
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "ホーム",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(scrollState),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            WelcomeCard(
-                user = user,
-                regionName = (regionAuthState as? RegionAuthState.Verified)?.regionData?.regionName
-            )
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        WelcomeCard(
+            user = user,
+            regionName = (regionAuthState as? RegionAuthState.Verified)?.regionData?.regionName
+        )
 
-            Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-            // その他のコンテンツを追加可能
-        }
+        // その他のコンテンツを追加可能
     }
 }
 

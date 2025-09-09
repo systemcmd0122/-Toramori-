@@ -2,8 +2,6 @@ package com.example.e_zuka.ui.members
 
 import android.annotation.SuppressLint
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -49,8 +47,6 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -70,6 +66,7 @@ import com.example.e_zuka.data.model.RegionAuthState
 import com.example.e_zuka.data.model.RegionMemberData
 import com.example.e_zuka.viewmodel.AuthViewModel
 import com.example.e_zuka.viewmodel.RegionMembersViewModel
+import com.example.e_zuka.ui.components.AppTopBar
 import com.google.firebase.auth.FirebaseUser
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -92,19 +89,10 @@ fun RegionMembersScreen(
     var searchActive by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    // アニメーション用の状態
-    var isContentVisible by remember { mutableStateOf(false) }
-    val contentAlpha by animateFloatAsState(
-        targetValue = if (isContentVisible) 1f else 0f,
-        animationSpec = tween(600),
-        label = "contentAlpha"
-    )
-
     // メンバー情報の初回読み込み
     LaunchedEffect(regionAuthState) {
         if (regionAuthState is RegionAuthState.Verified) {
             membersViewModel.loadRegionMembers((regionAuthState as RegionAuthState.Verified).regionData.codeId)
-            isContentVisible = true
         }
     }
 
@@ -131,60 +119,40 @@ fun RegionMembersScreen(
     var showSkillsDialog by remember { mutableStateOf(false) }
     var selectedSkills by remember { mutableStateOf<List<String>>(emptyList()) }
     var selectedMemberName by remember { mutableStateOf("") }
-    var selectedUserId by remember { mutableStateOf("") }
 
     Box(modifier = modifier.fillMaxSize()) {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // タイトルバーを修正
-            TopAppBar(
-                title = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Default.Groups,
-                            contentDescription = null,
-                            modifier = Modifier.size(28.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "地域のみなさん",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold
-                        )
+        // 標準化したTopBarを使うためにScaffoldでラップ
+        androidx.compose.material3.Scaffold(
+            topBar = {
+                AppTopBar(
+                    titleText = "地域のみなさん",
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                (regionAuthState as? RegionAuthState.Verified)?.let {
+                                    membersViewModel.loadRegionMembers(it.regionData.codeId)
+                                }
+                            },
+                            enabled = !isLoading
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "更新"
+                            )
+                        }
                     }
-                },
-                actions = {
-                    IconButton(
-                        onClick = {
-                            (regionAuthState as? RegionAuthState.Verified)?.let {
-                                membersViewModel.loadRegionMembers(it.regionData.codeId)
-                            }
-                        },
-                        enabled = !isLoading
-                    ) {
-                        Icon(
-                            Icons.Default.Refresh,
-                            contentDescription = "更新"
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                ),
-                modifier = Modifier.height(48.dp) // TopAppBarの高さを最適化
-            )
-
+                )
+            },
+            snackbarHost = { SnackbarHost(snackbarHostState) }
+        ) { innerPadding ->
             when (regionAuthState) {
                 is RegionAuthState.Verified -> {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
+                            .padding(innerPadding)
                             .padding(
-                                top = 0.dp, // トップのパディングを削除
+                                top = 0.dp, // 追加のトップパディングは不要
                                 start = 16.dp,
                                 end = 16.dp
                             )
@@ -198,22 +166,22 @@ fun RegionMembersScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // 検索バー
+                        // 検索バー（inputFieldオーバーロードを使用）
                         SearchBar(
-                            query = searchQuery,
-                            onQueryChange = { searchQuery = it },
-                            onSearch = {
-                                searchActive = false
-                                keyboardController?.hide()
-                            },
-                            active = searchActive,
-                            onActiveChange = { searchActive = it },
-                            placeholder = { Text("メンバーを検索...") },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Search,
-                                    contentDescription = "検索"
+                            inputField = {
+                                androidx.compose.material3.TextField(
+                                    value = searchQuery,
+                                    onValueChange = { searchQuery = it },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    placeholder = { Text("メンバーを検索...") },
+                                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "検索") }
                                 )
+                            },
+                            expanded = searchActive,
+                            onExpandedChange = { isActive ->
+                                searchActive = isActive
+                                if (!isActive) keyboardController?.hide()
                             },
                             modifier = Modifier.fillMaxWidth()
                         ) {
@@ -341,7 +309,7 @@ private fun RegionInfoCard(
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         Icons.Default.LocationOn,
-                        contentDescription = "地域",
+                        contentDescription = "地域アイコン",
                         modifier = Modifier.size(32.dp),
                         tint = MaterialTheme.colorScheme.onPrimary
                     )
@@ -368,7 +336,7 @@ private fun RegionInfoCard(
                 ) {
                     Icon(
                         Icons.Default.Groups,
-                        contentDescription = null,
+                        contentDescription = "メンバー数アイコン",
                         modifier = Modifier.size(16.dp),
                         tint = MaterialTheme.colorScheme.onPrimaryContainer
                     )
@@ -626,7 +594,7 @@ private fun EmptyStateView(
         ) {
             Icon(
                 Icons.Default.Groups,
-                contentDescription = null,
+                contentDescription = "メンバーがいません",
                 modifier = Modifier.size(64.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -643,7 +611,7 @@ private fun EmptyStateView(
             ) {
                 Icon(
                     Icons.Default.Refresh,
-                    contentDescription = null,
+                    contentDescription = "メンバー一覧を更新",
                     modifier = Modifier.size(16.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
