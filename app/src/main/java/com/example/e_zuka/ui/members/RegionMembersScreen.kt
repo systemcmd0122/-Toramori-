@@ -21,16 +21,22 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -41,6 +47,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SearchBar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -51,6 +59,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,12 +73,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.e_zuka.data.model.RegionAuthState
 import com.example.e_zuka.data.model.RegionMemberData
+import com.example.e_zuka.ui.components.AppTopBar
 import com.example.e_zuka.viewmodel.AuthViewModel
 import com.example.e_zuka.viewmodel.RegionMembersViewModel
-import com.example.e_zuka.ui.components.AppTopBar
 import com.google.firebase.auth.FirebaseUser
 import java.text.SimpleDateFormat
 import java.util.Locale
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+
+// 補完的な状態管理用の変数を追加
+private var selectedMemberName: String? by mutableStateOf(null)
+private var showSkillsDialog: Boolean by mutableStateOf(false)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalComposeUiApi::class)
 @Composable
@@ -88,6 +103,9 @@ fun RegionMembersScreen(
     var searchQuery by remember { mutableStateOf("") }
     var searchActive by remember { mutableStateOf(false) }
     val keyboardController = LocalSoftwareKeyboardController.current
+
+    // コルーチンスコープの初期化
+    val coroutineScope = rememberCoroutineScope()
 
     // メンバー情報の初回読み込み
     LaunchedEffect(regionAuthState) {
@@ -116,13 +134,18 @@ fun RegionMembersScreen(
     }
 
     // skillsダイアログ用状態
-    var showSkillsDialog by remember { mutableStateOf(false) }
+    var showProfileDialog by remember { mutableStateOf(false) }
+    var selectedMember by remember { mutableStateOf<RegionMemberData?>(null) }
     var selectedSkills by remember { mutableStateOf<List<String>>(emptyList()) }
-    var selectedMemberName by remember { mutableStateOf("") }
+    // userDocument用の状態
+    var selectedUserDocument: Map<String, Any>? by remember { mutableStateOf(null) }
+
+    // スキルキャッシュ
+    val skillsCache = remember { mutableStateMapOf<String, List<String>>() }
 
     Box(modifier = modifier.fillMaxSize()) {
         // 標準化したTopBarを使うためにScaffoldでラップ
-        androidx.compose.material3.Scaffold(
+        Scaffold(
             topBar = {
                 AppTopBar(
                     titleText = "地域のみなさん",
@@ -166,27 +189,62 @@ fun RegionMembersScreen(
 
                         Spacer(modifier = Modifier.height(16.dp))
 
-                        // 検索バー（inputFieldオーバーロードを使用）
+                        // 検索バー
                         SearchBar(
-                            inputField = {
-                                androidx.compose.material3.TextField(
-                                    value = searchQuery,
-                                    onValueChange = { searchQuery = it },
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    placeholder = { Text("メンバーを検索...") },
-                                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = "検索") }
-                                )
+                            query = searchQuery,
+                            onQueryChange = { newQuery -> searchQuery = newQuery },
+                            onSearch = { _ ->
+                                searchActive = false
+                                keyboardController?.hide()
                             },
-                            expanded = searchActive,
-                            onExpandedChange = { isActive ->
+                            active = searchActive,
+                            onActiveChange = { isActive ->
                                 searchActive = isActive
                                 if (!isActive) keyboardController?.hide()
                             },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            // 検索結果のプレビュー（必要に応じて実装）
-                        }
+                            modifier = Modifier.fillMaxWidth(),
+                            enabled = true,
+                            placeholder = {
+                                Text(
+                                    text = "メンバーを検索...",
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    Icons.Default.Search,
+                                    contentDescription = "検索アイコン",
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            },
+                            content = {
+                                if (filteredMembers.isNotEmpty()) {
+                                    filteredMembers.take(3).forEach { member ->
+                                        ListItem(
+                                            headlineContent = {
+                                                Text(
+                                                    text = member.displayName,
+                                                    style = MaterialTheme.typography.bodyLarge
+                                                )
+                                            },
+                                            leadingContent = {
+                                                Icon(
+                                                    Icons.Default.Person,
+                                                    contentDescription = "ユーザーアイコン",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            },
+                                            modifier = Modifier.clickable {
+                                                searchQuery = member.displayName
+                                                searchActive = false
+                                                keyboardController?.hide()
+                                            }
+                                        )
+                                    }
+                                }
+                            },
+                            tonalElevation = 0.dp
+                        )
 
                         Spacer(modifier = Modifier.height(16.dp))
 
@@ -199,12 +257,29 @@ fun RegionMembersScreen(
                                 membersViewModel.loadRegionMembers((regionAuthState as RegionAuthState.Verified).regionData.codeId)
                             },
                             onMemberClick = { member ->
-                                selectedMemberName = member.displayName
-                                membersViewModel.getUserSkills(member.userId) { skills ->
-                                    selectedSkills = skills
-                                    showSkillsDialog = true
+                                selectedMember = member
+                                val cached = skillsCache[member.userId]
+                                if (cached != null) {
+                                    selectedSkills = cached
+                                } else {
+                                    membersViewModel.getUserSkills(member.userId) { skills ->
+                                        skillsCache[member.userId] = skills
+                                        selectedSkills = skills
+                                    }
                                 }
-                            }
+                                // ユーザードキュメントを取得
+                                coroutineScope.launch {
+                                    selectedUserDocument = membersViewModel.getUserDocument(member.userId)
+                                }
+                                showProfileDialog = true
+                            },
+                            onShowSkills = { memberName, skills ->
+                                selectedMemberName = memberName
+                                selectedSkills = skills
+                                showSkillsDialog = true
+                            },
+                            membersViewModel = membersViewModel,
+                            skillsCache = skillsCache
                         )
                     }
                 }
@@ -255,24 +330,203 @@ fun RegionMembersScreen(
             modifier = Modifier.align(Alignment.BottomCenter)
         )
 
-        // skillsダイアログ
-        if (showSkillsDialog) {
-            androidx.compose.material3.AlertDialog(
-                onDismissRequest = { showSkillsDialog = false },
-                title = { Text(text = "${selectedMemberName}さんの得意なこと") },
+        // プロフィールダイアログ
+        if (showProfileDialog && selectedMember != null) {
+            val dateFormatter = remember { SimpleDateFormat("yyyy/MM/dd", Locale.JAPAN) }
+            AlertDialog(
+                onDismissRequest = {
+                    showProfileDialog = false
+                    selectedMember = null
+                    selectedUserDocument = null
+                },
+                icon = {
+                    Icon(
+                        Icons.Default.AccountCircle,
+                        contentDescription = null,
+                        modifier = Modifier.size(32.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                },
+                title = {
+                    Text(
+                        text = "${selectedMember?.displayName}さんのプロフィール",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                },
                 text = {
-                    if (selectedSkills.isEmpty()) {
-                        Text("得意なことは未登録です")
-                    } else {
-                        Column {
-                            selectedSkills.forEach { skill ->
-                                Text("・$skill", style = MaterialTheme.typography.bodyLarge)
+                    Column(
+                        modifier = Modifier.verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // 参加情報カード
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.Groups,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "参加情報",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                    )
+                                }
+                                Text(
+                                    text = "参加日: ${selectedMember?.joinedAt?.toDate()?.let { dateFormatter.format(it) } ?: "不明"}",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+
+                        // 住所情報（公開設定が有効な場合のみ表示）
+                        if (selectedUserDocument?.get("isAddressPublic") as? Boolean == true) {
+                            val prefecture = selectedUserDocument?.get("prefecture") as? String
+                            val city = selectedUserDocument?.get("city") as? String
+                            if (!prefecture.isNullOrBlank() && !city.isNullOrBlank()) {
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                    ),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(16.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                Icons.Default.LocationOn,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "住所",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = MaterialTheme.colorScheme.onSecondaryContainer
+                                            )
+                                        }
+                                        Text(
+                                            text = "$prefecture $city",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 得意なことカード
+                        Card(
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "得意なこと",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                }
+                                if (selectedSkills.isNotEmpty()) {
+                                    selectedSkills.forEach { skill ->
+                                        Surface(
+                                            color = MaterialTheme.colorScheme.surface,
+                                            shape = RoundedCornerShape(8.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = skill,
+                                                    style = MaterialTheme.typography.bodyLarge,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    Text(
+                                        text = "得意なことは未登録です",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                }
                             }
                         }
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { showSkillsDialog = false }) {
+                    TextButton(onClick = {
+                        showProfileDialog = false
+                        selectedMember = null
+                        selectedUserDocument = null
+                    }) {
+                        Text("閉じる")
+                    }
+                }
+            )
+        }
+
+        // スキル一覧ダイアログ
+        if (showSkillsDialog && selectedMemberName != null) {
+            AlertDialog(
+                onDismissRequest = {
+                    showSkillsDialog = false
+                    selectedMemberName = null
+                },
+                title = { Text("${selectedMemberName}さんの得意なこと") },
+                text = {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (selectedSkills.isNotEmpty()) {
+                            selectedSkills.forEach { skill ->
+                                Text("・$skill", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        } else {
+                            Text(
+                                text = "得意なことは未登録です",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showSkillsDialog = false
+                        selectedMemberName = null
+                    }) {
                         Text("閉じる")
                     }
                 }
@@ -373,6 +627,9 @@ private fun MembersList(
     isLoading: Boolean,
     onRefresh: () -> Unit,
     onMemberClick: (RegionMemberData) -> Unit,
+    onShowSkills: (String, List<String>) -> Unit,
+    membersViewModel: RegionMembersViewModel,
+    skillsCache: MutableMap<String, List<String>>,
     modifier: Modifier = Modifier
 ) {
     AnimatedVisibility(
@@ -398,7 +655,10 @@ private fun MembersList(
                     MemberListItem(
                         member = member,
                         isCurrentUser = member.userId == currentUserId,
-                        onClick = { onMemberClick(member) }
+                        onClick = { onMemberClick(member) },
+                        onShowSkills = { name, skills -> onShowSkills(name, skills) },
+                        membersViewModel = membersViewModel,
+                        skillsCache = skillsCache
                     )
                 }
             }
@@ -411,9 +671,22 @@ private fun MemberListItem(
     member: RegionMemberData,
     isCurrentUser: Boolean,
     onClick: () -> Unit = {},
+    onShowSkills: (String, List<String>) -> Unit,
+    membersViewModel: RegionMembersViewModel,
+    skillsCache: MutableMap<String, List<String>>,
     @SuppressLint("ModifierParameter") modifier: Modifier = Modifier
 ) {
     val dateFormatter = remember { SimpleDateFormat("yyyy/MM/dd", Locale.JAPAN) }
+
+    // Ensure skills are loaded into the cache lazily
+    LaunchedEffect(member.userId) {
+        if (!skillsCache.containsKey(member.userId)) {
+            membersViewModel.getUserSkills(member.userId) { skills ->
+                skillsCache[member.userId] = skills
+            }
+        }
+    }
+
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -426,15 +699,11 @@ private fun MemberListItem(
             }
         ),
         shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isCurrentUser) 4.dp else 2.dp
-        )
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isCurrentUser) 4.dp else 2.dp)
     ) {
         ListItem(
             headlineContent = {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = member.displayName.ifBlank { "名前未設定" },
                         style = MaterialTheme.typography.bodyLarge,
@@ -442,10 +711,7 @@ private fun MemberListItem(
                     )
                     if (isCurrentUser) {
                         Spacer(modifier = Modifier.width(8.dp))
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.primary
-                        ) {
+                        Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primary) {
                             Text(
                                 text = "あなた",
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
@@ -463,35 +729,63 @@ private fun MemberListItem(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+
+                    // preview chips
+                    val cachedSkills = skillsCache[member.userId] ?: emptyList()
+                    if (cachedSkills.isEmpty()) {
+                        Text(
+                            text = "得意なこと: 未登録",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        Row(modifier = Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            val preview = cachedSkills.take(3)
+                            preview.forEach { skill ->
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                    shape = RoundedCornerShape(12.dp),
+                                    modifier = Modifier.clickable { onShowSkills(member.displayName.ifBlank { "名前未設定" }, cachedSkills) }
+                                ) {
+                                    Text(
+                                        text = skill,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+                            if (cachedSkills.size > 3) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.clickable { onShowSkills(member.displayName.ifBlank { "名前未設定" }, cachedSkills) }
+                                ) {
+                                    Text(
+                                        text = "+${cachedSkills.size - 3}",
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             },
             leadingContent = {
-                Surface(
-                    modifier = Modifier.size(40.dp),
-                    shape = CircleShape,
-                    color = if (isCurrentUser) {
-                        MaterialTheme.colorScheme.primary
-                    } else {
-                        MaterialTheme.colorScheme.primaryContainer
-                    }
-                ) {
+                Surface(modifier = Modifier.size(40.dp), shape = CircleShape, color = if (isCurrentUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.primaryContainer) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             if (isCurrentUser) Icons.Default.Person else Icons.Default.AccountCircle,
                             contentDescription = "プロフィール",
                             modifier = Modifier.size(24.dp),
-                            tint = if (isCurrentUser) {
-                                MaterialTheme.colorScheme.onPrimary
-                            } else {
-                                MaterialTheme.colorScheme.onPrimaryContainer
-                            }
+                            tint = if (isCurrentUser) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                 }
             },
-            colors = ListItemDefaults.colors(
-                containerColor = Color.Transparent
-            )
+            colors = ListItemDefaults.colors(containerColor = Color.Transparent)
         )
     }
 }
@@ -562,9 +856,9 @@ private fun ErrorStateView(
                     color = MaterialTheme.colorScheme.onErrorContainer
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                androidx.compose.material3.Button(
+                Button(
                     onClick = onRetry,
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
                     )
                 ) {
@@ -606,7 +900,7 @@ private fun EmptyStateView(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(16.dp))
-            androidx.compose.material3.OutlinedButton(
+            OutlinedButton(
                 onClick = onRefresh
             ) {
                 Icon(

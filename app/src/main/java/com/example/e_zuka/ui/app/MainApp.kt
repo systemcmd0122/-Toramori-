@@ -68,6 +68,7 @@ import com.example.e_zuka.viewmodel.RegionMembersViewModel
 import com.example.e_zuka.viewmodel.ThemeSettingsViewModel
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 data class NavigationItem(
     val title: String,
@@ -88,21 +89,22 @@ fun MainApp(
     val regionAuthState by viewModel.regionAuthState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    val successMessage by viewModel.successMessage.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
-
     // アニメーション用の状態
     var isContentVisible by remember { mutableStateOf(false) }
 
-    // メッセージの表示処理
-    LaunchedEffect(successMessage, errorMessage) {
-        successMessage?.let {
-            snackbarHostState.showSnackbar(it)
-            viewModel.clearSuccessMessage()
+    // One-shot イベントでメッセージ表示（StateFlow は内部的に使うため、SharedFlow を購読）
+    LaunchedEffect(viewModel) {
+        // success events
+        launch {
+            viewModel.successEvents.collect { msg ->
+                snackbarHostState.showSnackbar(msg)
+            }
         }
-        errorMessage?.let {
-            snackbarHostState.showSnackbar(it)
-            viewModel.clearError()
+        // error events
+        launch {
+            viewModel.errorEvents.collect { msg ->
+                snackbarHostState.showSnackbar(msg)
+            }
         }
     }
 

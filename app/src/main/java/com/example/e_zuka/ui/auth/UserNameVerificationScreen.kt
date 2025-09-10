@@ -22,10 +22,8 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -40,11 +38,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -66,8 +61,6 @@ fun UserNameVerificationScreen(
     var isFormValid by remember { mutableStateOf(false) }
 
     val isLoading by viewModel.isLoading.collectAsState()
-    val successMessage by viewModel.successMessage.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -75,7 +68,7 @@ fun UserNameVerificationScreen(
     val validateName: (String) -> String? = { name ->
         when {
             name.isBlank() -> "名前を入力してください"
-            name.length < 1 -> "正しい名前を入力してください"
+            name.isEmpty() -> "正しい名前を入力してください"
             name.length > 10 -> "名前は10文字以内で入力してください"
             !name.matches(Regex("^[ぁ-んァ-ヶ一-龯々〆〤ー]+$")) ->
                 "名前は日本語（ひらがな、カタカナ、漢字）で入力してください"
@@ -91,15 +84,6 @@ fun UserNameVerificationScreen(
                 lastName.isNotBlank() && firstName.isNotBlank()
     }
 
-    // メッセージ表示処理
-    LaunchedEffect(successMessage, errorMessage) {
-        successMessage?.let {
-            snackbarHostState.showSnackbar(it)
-        }
-        errorMessage?.let {
-            snackbarHostState.showSnackbar(it)
-        }
-    }
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(

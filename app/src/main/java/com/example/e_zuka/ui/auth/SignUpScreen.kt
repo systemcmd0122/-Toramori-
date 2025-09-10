@@ -1,9 +1,9 @@
+@file:Suppress("DEPRECATION", "unused")
 package com.example.e_zuka.ui.auth
 
-import android.app.Activity
-import android.content.Intent
 import android.util.Patterns
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,6 +47,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -59,9 +60,9 @@ import androidx.compose.ui.unit.dp
 import com.example.e_zuka.ui.components.LoadingButton
 import com.example.e_zuka.ui.components.ValidatedTextField
 import com.example.e_zuka.viewmodel.AuthViewModel
-import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 @Composable
 fun SignUpScreen(
@@ -69,6 +70,7 @@ fun SignUpScreen(
     onNavigateToSignIn: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
@@ -121,31 +123,26 @@ fun SignUpScreen(
                 email.isNotBlank() && password.isNotBlank() && confirmPassword.isNotBlank()
     }
 
-    // エラーメッセージ表示
-    val errorMessage by viewModel.errorMessage.collectAsState()
-    LaunchedEffect(errorMessage) {
-        errorMessage?.let {
-            snackbarHostState.showSnackbar(it)
-            viewModel.clearError()
-        }
-    }
+    // One Tap (Google Identity) 設定
+    val oneTapClient = viewModel.getOneTapClient(context)
+    val beginRequest = viewModel.buildBeginSignInRequest()
 
-    // Google Sign-In設定
-    val googleSignInLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
+    val oneTapLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-            try {
-                val account = task.getResult(ApiException::class.java)
-                if (account != null) {
-                    viewModel.signInWithGoogle(account)
-                }
-            } catch (_: ApiException) {
-                coroutineScope.launch {
-                    snackbarHostState.showSnackbar("Googleサインインに失敗しました")
+        try {
+            val data = result.data
+            if (data != null) {
+                val credential = oneTapClient.getSignInCredentialFromIntent(data)
+                val idToken = credential.googleIdToken
+                if (!idToken.isNullOrEmpty()) {
+                    coroutineScope.launch { viewModel.signInWithIdToken(idToken) }
+                } else {
+                    coroutineScope.launch { snackbarHostState.showSnackbar("IDトークンが取得できませんでした") }
                 }
             }
+        } catch (e: ApiException) {
+            coroutineScope.launch { snackbarHostState.showSnackbar("One Tap サインインに失敗しました: ${e.message}") }
         }
     }
 
@@ -177,6 +174,9 @@ fun SignUpScreen(
 
                     if (emailVerificationSent) {
                         EmailVerificationSentCard(
+                            viewModel = viewModel,
+                            coroutineScope = coroutineScope,
+                            isLoading = isLoading,
                             onNavigateToSignIn = {
                                 viewModel.clearEmailVerificationSent()
                                 onNavigateToSignIn()
@@ -277,8 +277,16 @@ fun SignUpScreen(
                             text = "Googleで登録",
                             isLoading = isLoading,
                             onClick = {
-                                val signInIntent: Intent? = viewModel.getGoogleSignInClient().signInIntent
-                                googleSignInLauncher.launch(signInIntent)
+                                coroutineScope.launch {
+                                    try {
+                                        val result = oneTapClient.beginSignIn(beginRequest).await()
+                                        val intentSender = result.pendingIntent.intentSender
+                                        val req = IntentSenderRequest.Builder(intentSender).build()
+                                        oneTapLauncher.launch(req)
+                                    } catch (e: Exception) {
+                                        snackbarHostState.showSnackbar("One Tap を開始できませんでした: ${e.message}")
+                                    }
+                                }
                             },
                             enabled = !isLoading,
                             isOutlined = true
@@ -289,6 +297,16 @@ fun SignUpScreen(
                         // ログイン画面への導線
                         TextButton(onClick = onNavigateToSignIn, modifier = Modifier.semantics { contentDescription = "ログインへ" }) {
                             Text("すでにアカウントをお持ちの方はこちら")
+                        }
+
+                        // ネットワーク等の失敗時に登録を再試行できるUI
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = { viewModel.retrySignUp() },
+                            enabled = !isLoading,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("登録を再試行")
                         }
                     }
                 }
@@ -315,6 +333,9 @@ fun SignUpScreen(
 
 @Composable
 private fun EmailVerificationSentCard(
+    viewModel: AuthViewModel,
+    coroutineScope: kotlinx.coroutines.CoroutineScope,
+    isLoading: Boolean,
     onNavigateToSignIn: () -> Unit
 ) {
     Card(
@@ -346,7 +367,7 @@ private fun EmailVerificationSentCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "確認メールを送信しました。メール内のリンクをクリックしてメールアドレスを認証後、ログインしてください。",
+                text = "確認メールを送信しました。メール内のリンクをクリックしてメールアドレスを認証後、ログインしてください。\nメールが届かない場合は再送信または確認を実行してください。",
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -354,11 +375,50 @@ private fun EmailVerificationSentCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        viewModel.sendEmailVerification()
+                        coroutineScope.launch { /* feedback handled via ViewModel messages */ }
+                    },
+                    enabled = !isLoading,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("再送信")
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            viewModel.checkEmailVerification()
+                        }
+                    },
+                    enabled = !isLoading,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("認証確認")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 登録再試行（ネットワークエラー等の復旧用）
+            OutlinedButton(
+                onClick = { viewModel.retrySignUp() },
+                enabled = !isLoading,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("登録を再試行")
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
             OutlinedButton(
                 onClick = onNavigateToSignIn,
                 colors = ButtonDefaults.outlinedButtonColors(
                     contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
+                ),
+                modifier = Modifier.fillMaxWidth()
             ) {
                 Text("ログイン画面へ")
             }

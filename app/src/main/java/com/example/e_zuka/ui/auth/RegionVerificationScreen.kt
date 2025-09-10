@@ -26,7 +26,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -42,8 +41,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.e_zuka.data.model.RegionAuthState
@@ -64,8 +63,6 @@ fun RegionVerificationScreen(
 
     val isLoading by viewModel.isLoading.collectAsState()
     val regionAuthState by viewModel.regionAuthState.collectAsState()
-    val successMessage by viewModel.successMessage.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
     val scrollState = rememberScrollState()
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -86,31 +83,18 @@ fun RegionVerificationScreen(
         isFormValid = regionCodeError == null && regionCode.isNotBlank()
     }
 
-    // メッセージ表示処理
-    LaunchedEffect(successMessage, errorMessage) {
-        successMessage?.let {
-            snackbarHostState.showSnackbar(it)
-        }
-        errorMessage?.let {
-            snackbarHostState.showSnackbar(it)
-        }
-    }
-
     // 認証完了時のアニメーション用状態
     var isVerificationComplete by remember { mutableStateOf(false) }
 
-    // 地域認証成功の判定とフィードバック
+    // 地域認証成功の判定とフィードバック（表示はトップレベルで行うためここでは画面内の状態のみ変更）
     LaunchedEffect(regionAuthState) {
         when (regionAuthState) {
             is RegionAuthState.Verified -> {
                 isVerificationComplete = true
-                snackbarHostState.showSnackbar("地域認証が完了しました！ホーム画面に移動します...")
             }
             is RegionAuthState.Error -> {
-                snackbarHostState.showSnackbar("地域認証に失敗しました: ${(regionAuthState as RegionAuthState.Error).message}")
             }
             else -> {
-                // その他の状態では何もしない
             }
         }
     }
@@ -132,7 +116,6 @@ fun RegionVerificationScreen(
                     modifier = Modifier.padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // ヘッダー - 地域認証状態に応じてアイコンを変更
                     when (regionAuthState) {
                         is RegionAuthState.Verified -> {
                             Icon(
@@ -193,7 +176,6 @@ fun RegionVerificationScreen(
 
                     Spacer(modifier = Modifier.height(24.dp))
 
-                    // 認証完了時以外は説明カードを表示
                     if (!isVerificationComplete) {
                         // 説明カード
                         Card(
@@ -308,7 +290,7 @@ fun RegionVerificationScreen(
             }
         }
 
-        // Snackbarホスト
+        // SnackbarHost（トップレベルで表示されるため、ここでは自動表示しない）
         SnackbarHost(
             hostState = snackbarHostState,
             modifier = Modifier

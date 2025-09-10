@@ -1,51 +1,83 @@
+@file:Suppress("DEPRECATION")
 package com.example.e_zuka.data.auth
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.util.Log
+import com.sadowara.e_zuka.R
 import com.example.e_zuka.data.model.AuthResult
 import com.example.e_zuka.data.model.UserData
 import com.example.e_zuka.data.region.RegionAuthRepository
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount
-import com.google.android.gms.auth.api.signin.GoogleSignInClient
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.auth.api.identity.BeginSignInRequest
+import com.google.android.gms.auth.api.identity.Identity
+import com.google.android.gms.auth.api.identity.SignInClient
 import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FieldValue
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.tasks.await
 
+@SuppressLint("DiscouragedApi")
 class AuthRepository(context: Context) {
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
     val firestore: FirebaseFirestore = FirebaseFirestore.getInstance()
-    private val googleSignInClient: GoogleSignInClient
+    private val serverClientId: String
     private val regionAuthRepository: RegionAuthRepository = RegionAuthRepository()
 
     companion object {
         private const val TAG = "AuthRepository"
     }
 
-    init {
-        // safe lookup for default_web_client_id to avoid direct R reference
-        val clientIdResId = context.resources.getIdentifier(
-            "default_web_client_id",
-            "string",
-            context.packageName
-        )
-        val clientId = if (clientIdResId != 0) context.getString(clientIdResId) else ""
+    private val appContext: Context = context.applicationContext
 
-        val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestIdToken(clientId)
-            .requestEmail()
+    init {
+        // Use direct resource lookup for default_web_client_id
+        val clientId = try {
+            appContext.getString(R.string.default_web_client_id)
+        } catch (_: Exception) {
+            ""
+        }
+        serverClientId = clientId
+    }
+
+    // One Tap (Google Identity Services) client
+    fun getOneTapClient(context: Context): SignInClient = Identity.getSignInClient(context)
+
+    fun buildBeginSignInRequest(): BeginSignInRequest {
+        return BeginSignInRequest.Builder()
+            .setGoogleIdTokenRequestOptions(
+                BeginSignInRequest.GoogleIdTokenRequestOptions.builder()
+                    .setSupported(true)
+                    .setServerClientId(serverClientId)
+                    .setFilterByAuthorizedAccounts(false)
+                    .build()
+            )
+            .setAutoSelectEnabled(false)
             .build()
-        googleSignInClient = GoogleSignIn.getClient(context, gso)
+    }
+
+    // ID トークンを受け取って Firebase にサインインする
+    suspend fun signInWithIdToken(idToken: String): AuthResult {
+        return try {
+            val credential = GoogleAuthProvider.getCredential(idToken, null)
+            val result = auth.signInWithCredential(credential).await()
+            if (result.user != null) {
+                result.user!!.reload().await()
+                syncUserDataToFirestore(result.user!!)
+                AuthResult(success = true, user = result.user)
+            } else {
+                AuthResult(success = false, errorMessage = "Googleログインに失敗しました")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "signInWithIdToken error", e)
+            AuthResult(success = false, errorMessage = getLocalizedErrorMessage(e))
+        }
     }
 
     fun getAuthStateFlow(): Flow<FirebaseUser?> = callbackFlow {
@@ -151,42 +183,18 @@ class AuthRepository(context: Context) {
         }
     }
 
-    fun getGoogleSignInClient(): GoogleSignInClient = googleSignInClient
-
-    suspend fun signInWithGoogle(account: GoogleSignInAccount): AuthResult {
-        return try {
-            Log.d(TAG, "Starting Google sign in for: ${account.email}")
-
-            val credential = GoogleAuthProvider.getCredential(account.idToken, null)
-            val result = auth.signInWithCredential(credential).await()
-            if (result.user != null) {
-                Log.d(TAG, "Google sign in successful for user: ${result.user!!.uid}")
-
-                // ユーザー情報を最新に更新
-                result.user!!.reload().await()
-
-
-                // Firestoreのユーザーデータを同期
-                syncUserDataToFirestore(result.user!!)
-
-                AuthResult(success = true, user = result.user)
-            } else {
-                Log.w(TAG, "Google sign in failed - no user returned")
-                AuthResult(success = false, errorMessage = "Googleログインに失敗しました")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Google sign in error", e)
-            AuthResult(success = false, errorMessage = getLocalizedErrorMessage(e))
-        }
-    }
-
     suspend fun signOut(): AuthResult {
         return try {
             val currentUserId = auth.currentUser?.uid
             Log.d(TAG, "Starting sign out for user: $currentUserId")
 
             auth.signOut()
-            googleSignInClient.signOut().await()
+            // Attempt One Tap sign-out to clear Google One Tap state as well
+            try {
+                signOutOneTap()
+            } catch (e: Exception) {
+                Log.w(TAG, "One Tap sign out failed: ${e.message}")
+            }
 
             Log.d(TAG, "Sign out successful")
             AuthResult(success = true)
@@ -196,17 +204,15 @@ class AuthRepository(context: Context) {
         }
     }
 
-    suspend fun resetPassword(email: String): AuthResult {
-        return try {
-            Log.d(TAG, "Sending password reset email to: $email")
-
-            auth.sendPasswordResetEmail(email).await()
-
-            Log.d(TAG, "Password reset email sent successfully")
-            AuthResult(success = true)
+    // Sign out One Tap client to clear local Google auth state
+    suspend fun signOutOneTap() {
+        try {
+            val client = Identity.getSignInClient(appContext)
+            client.signOut().await()
+            Log.d(TAG, "One Tap sign out successful")
         } catch (e: Exception) {
-            Log.e(TAG, "Password reset error", e)
-            AuthResult(success = false, errorMessage = getLocalizedErrorMessage(e))
+            Log.w(TAG, "One Tap sign out error", e)
+            throw e
         }
     }
 
@@ -289,6 +295,41 @@ class AuthRepository(context: Context) {
         }
     }
 
+    // 住所情報の更新
+    suspend fun updateAddress(userId: String, prefecture: String, city: String) {
+        try {
+            val userDocRef = firestore.collection("users").document(userId)
+            userDocRef.update(
+                mapOf(
+                    "prefecture" to prefecture,
+                    "city" to city,
+                    "updatedAt" to Timestamp.now()
+                )
+            ).await()
+            Log.d(TAG, "Address updated for user: $userId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to update address", e)
+            throw e
+        }
+    }
+
+    // 住所の公開設定を更新
+    suspend fun updateAddressVisibility(userId: String, isPublic: Boolean) {
+        try {
+            val userDocRef = firestore.collection("users").document(userId)
+            userDocRef.update(
+                mapOf(
+                    "isAddressPublic" to isPublic,
+                    "updatedAt" to Timestamp.now()
+                )
+            ).await()
+            Log.d(TAG, "Address visibility updated for user: $userId")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to update address visibility", e)
+            throw e
+        }
+    }
+
     suspend fun getUserDocument(userId: String): Map<String, Any>? {
         return try {
             val userDoc = firestore.collection("users").document(userId).get().await()
@@ -300,25 +341,6 @@ class AuthRepository(context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to get user document", e)
             null
-        }
-    }
-
-    suspend fun addSkillToFirestore(userId: String, skill: String) {
-        try {
-            val userDocRef = firestore.collection("users").document(userId)
-            val userDoc = userDocRef.get().await()
-
-            if (!userDoc.exists()) {
-                // ユーザードキュメントが存在しない場合は作成
-                val user = getCurrentUser() ?: throw Exception("User not logged in")
-                syncUserDataToFirestore(user)
-            }
-
-            userDocRef.update("skills", FieldValue.arrayUnion(skill)).await()
-            Log.d(TAG, "Skill added to Firestore for user: $userId")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to add skill to Firestore", e)
-            throw e
         }
     }
 

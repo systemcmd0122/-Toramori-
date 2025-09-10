@@ -1,3 +1,4 @@
+@file:Suppress("DEPRECATION")
 package com.example.e_zuka.viewmodel
 
 import android.content.Context
@@ -9,12 +10,17 @@ import com.example.e_zuka.data.auth.AuthRepository
 import com.example.e_zuka.data.model.AuthState
 import com.example.e_zuka.data.model.CompleteAuthState
 import com.example.e_zuka.data.model.RegionAuthState
+import com.example.e_zuka.data.model.UserData
+import com.google.android.gms.auth.api.identity.BeginSignInRequest
+import com.google.android.gms.auth.api.identity.SignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
-import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.UserProfileChangeRequest
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
@@ -39,10 +45,23 @@ class AuthViewModel(context: Context) : ViewModel() {
     val emailVerificationSent: StateFlow<Boolean> = _emailVerificationSent.asStateFlow()
 
     private val _successMessage = MutableStateFlow<String?>(null)
-    val successMessage: StateFlow<String?> = _successMessage.asStateFlow()
+
+    // one-shot events (SharedFlow) to emit messages exactly once to UI
+    private val _successEvents = MutableSharedFlow<String>()
+    val successEvents: SharedFlow<String> = _successEvents.asSharedFlow()
 
     private val _errorMessage = MutableStateFlow<String?>(null)
-    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    private val _errorEvents = MutableSharedFlow<String>()
+    val errorEvents: SharedFlow<String> = _errorEvents.asSharedFlow()
+
+    // 最近の操作情報を保持してUIから再試行できるようにする
+    private var lastSignInEmail: String? = null
+    private var lastSignInPassword: String? = null
+
+    private var lastSignUpEmail: String? = null
+    private var lastSignUpPassword: String? = null
+    private var lastSignUpConfirm: String? = null
 
     init {
         viewModelScope.launch {
@@ -79,6 +98,25 @@ class AuthViewModel(context: Context) : ViewModel() {
                 message?.let { _errorMessage.value = it }
             }
         }
+
+        // Forward any StateFlow messages to one-shot SharedFlows and clear the StateFlow
+        viewModelScope.launch {
+            _successMessage.collect { msg ->
+                msg?.let {
+                    _successEvents.emit(it)
+                    _successMessage.value = null
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            _errorMessage.collect { msg ->
+                msg?.let {
+                    _errorEvents.emit(it)
+                    _errorMessage.value = null
+                }
+            }
+        }
     }
 
     private fun checkUserAuthFlow(user: FirebaseUser) {
@@ -106,7 +144,7 @@ class AuthViewModel(context: Context) : ViewModel() {
                     _authState.value = AuthState.RegionVerificationRequired(user)
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "認証状態の確認中にエラーが発生しました: ${e.message}"
+                _errorMessage.value = "認証状態の確認中にエラーが発生しました: ${e.message} 。ネットワークを確認して再試行してください。"
                 _authState.value = AuthState.RegionVerificationRequired(user)
             } finally {
                 _isLoading.value = false
@@ -184,7 +222,7 @@ class AuthViewModel(context: Context) : ViewModel() {
                 checkUserAuthFlow(currentUser)
 
             } catch (e: Exception) {
-                _errorMessage.value = "本名の更新に失敗しました: ${e.message}"
+                _errorMessage.value = "本名の更新に失敗しました: ${e.message}。ネットワークを確認し、再試行してください。"
             } finally {
                 _isLoading.value = false
             }
@@ -193,24 +231,44 @@ class AuthViewModel(context: Context) : ViewModel() {
 
     // 認証関連のメソッド
     fun signInWithEmail(email: String, password: String) {
+        lastSignInEmail = email
+        lastSignInPassword = password
+
         viewModelScope.launch {
             _isLoading.value = true
             try {
                 val result = authRepository.signInWithEmail(email.trim(), password)
                 if (result.success) {
                     clearMessages()
+                    // 成功時は保存された再試行情報をクリア
+                    lastSignInEmail = null
+                    lastSignInPassword = null
                 } else {
-                    _errorMessage.value = result.errorMessage ?: "ログインに失敗しました"
+                    _errorMessage.value = (result.errorMessage ?: "ログインに失敗しました") + "。ネットワークエラーの場合は再試行してください。"
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "ログインに失敗しました: ${e.message}"
+                _errorMessage.value = "ログインに失敗しました: ${e.message}。ネットワークを確認して再試行してください。"
             } finally {
                 _isLoading.value = false
             }
         }
     }
 
+    fun retrySignIn() {
+        val email = lastSignInEmail
+        val password = lastSignInPassword
+        if (email != null && password != null) {
+            signInWithEmail(email, password)
+        } else {
+            _errorMessage.value = "再試行するサインイン情報がありません"
+        }
+    }
+
     fun signUpWithEmail(email: String, password: String, confirmPassword: String) {
+        lastSignUpEmail = email
+        lastSignUpPassword = password
+        lastSignUpConfirm = confirmPassword
+
         when {
             email.isBlank() || password.isBlank() || confirmPassword.isBlank() -> {
                 _errorMessage.value = "すべての項目を入力してください"
@@ -233,26 +291,67 @@ class AuthViewModel(context: Context) : ViewModel() {
                 if (result.success) {
                     _emailVerificationSent.value = true
                     _successMessage.value = "アカウントを作成しました。確認メールを送信しましたので、メール内のリンクをクリックしてメールアドレスを認証してください。"
+                    // 成功時は再試行情報をクリア
+                    lastSignUpEmail = null
+                    lastSignUpPassword = null
+                    lastSignUpConfirm = null
                 } else {
-                    _errorMessage.value = result.errorMessage ?: "アカウント作成に失敗しました"
+                    _errorMessage.value = (result.errorMessage ?: "アカウント作成に失敗しました") + "。ネットワークエラーの場合は再試行してください。"
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "アカウント作成に失敗しました: ${e.message}"
+                _errorMessage.value = "アカウント作成に失敗しました: ${e.message}。ネットワークを確認して再試行してください。"
             } finally {
                 _isLoading.value = false
             }
         }
     }
 
-    fun signInWithGoogle(account: GoogleSignInAccount) {
+    fun retrySignUp() {
+        val email = lastSignUpEmail
+        val password = lastSignUpPassword
+        val confirm = lastSignUpConfirm
+        if (email != null && password != null && confirm != null) {
+            signUpWithEmail(email, password, confirm)
+        } else {
+            _errorMessage.value = "再試行する登録情報がありません"
+        }
+    }
+
+    // One Tap 用ユーティリティ（UI から呼び出す）
+    fun getOneTapClient(context: Context): SignInClient = authRepository.getOneTapClient(context)
+
+    fun buildBeginSignInRequest(): BeginSignInRequest = authRepository.buildBeginSignInRequest()
+
+    // IDトークンで直接 Firebase にサインイン
+    fun signInWithIdToken(idToken: String) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
-                val result = authRepository.signInWithGoogle(account)
+                val result = authRepository.signInWithIdToken(idToken)
                 if (result.success) {
                     clearMessages()
                 } else {
                     _errorMessage.value = result.errorMessage ?: "Googleログインに失敗しました"
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Googleログインに失敗しました: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    @Deprecated("Use One Tap sign-in (signInWithIdToken) instead")
+    fun signInWithGoogle(account: GoogleSignInAccount) {
+        // 互換性保持のため残す（既存の GoogleSignInAccount を扱う場合）
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val token = account.idToken
+                if (token != null) {
+                    signInWithIdToken(token)
+                } else {
+                    _errorMessage.value = "Google ID トークンが取得できませんでした"
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "Googleログインに失敗しました: ${e.message}"
@@ -307,11 +406,13 @@ class AuthViewModel(context: Context) : ViewModel() {
                 currentUser?.reload()?.await()
                 if (currentUser?.isEmailVerified == true) {
                     _successMessage.value = "メールアドレスが認証されました"
+                    // メールが認証され次第、認証フローを進める
+                    checkUserAuthFlow(currentUser)
                 } else {
-                    _errorMessage.value = "まだメールアドレスが認証されていません"
+                    _errorMessage.value = "まだメールアドレスが認証されていません。メール内のリンクを確認してください。"
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "認証状態の確認に失敗しました: ${e.message}"
+                _errorMessage.value = "認証状態の確認に失敗しました: ${e.message}。ネットワークを確認して再試行してください。"
             } finally {
                 _isLoading.value = false
             }
@@ -369,7 +470,13 @@ class AuthViewModel(context: Context) : ViewModel() {
                     return@launch
                 }
                 val userDoc = authRepository.getUserDocument(currentUser.uid)
-                val skills = userDoc?.get("skills") as? List<String> ?: emptyList()
+                // 安全に型チェックして skills を取り出す
+                val skills = if (userDoc != null) {
+                    val raw = userDoc["skills"]
+                    if (raw is List<*>) raw.mapNotNull { it as? String } else emptyList()
+                } else {
+                    emptyList()
+                }
                 onLoaded(skills)
             } catch (e: Exception) {
                 _errorMessage.value = "得意なことの読み込みに失敗しました: ${e.message}"
@@ -379,41 +486,48 @@ class AuthViewModel(context: Context) : ViewModel() {
         }
     }
 
-    // 得意なことをFirestoreに追加
-    fun addSkill(skill: String, onComplete: (Boolean) -> Unit) {
+    // 住所情報を更新
+    fun updateAddress(prefecture: String, city: String) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
                 val currentUser = authRepository.getCurrentUser()
                 if (currentUser == null) {
                     _errorMessage.value = "ユーザーがログインしていません"
-                    onComplete(false)
                     return@launch
                 }
-                authRepository.addSkillToFirestore(currentUser.uid, skill)
-                onComplete(true)
+                authRepository.updateAddress(currentUser.uid, prefecture, city)
+                _successMessage.value = "住所情報を更新しました"
             } catch (e: Exception) {
-                _errorMessage.value = "得意なことの追加に失敗しました: ${e.message}"
-                onComplete(false)
+                _errorMessage.value = "住所情報の更新に失敗しました: ${e.message}"
             } finally {
                 _isLoading.value = false
             }
         }
     }
 
+    // 住所の公開設定を更新
+    fun updateAddressVisibility(isPublic: Boolean) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val currentUser = authRepository.getCurrentUser()
+                if (currentUser == null) {
+                    _errorMessage.value = "ユーザーがログインしていません"
+                    return@launch
+                }
+                authRepository.updateAddressVisibility(currentUser.uid, isPublic)
+                _successMessage.value = "住所の公開設定を更新しました"
+            } catch (e: Exception) {
+                _errorMessage.value = "公開設定の更新に失敗しました: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
 
     // ユーティリティメソッド
-    fun getGoogleSignInClient(): GoogleSignInClient = authRepository.getGoogleSignInClient()
-
-    fun clearError() {
-        _errorMessage.value = null
-        regionAuthViewModel.clearError()
-    }
-
-    fun clearSuccessMessage() {
-        _successMessage.value = null
-        regionAuthViewModel.clearSuccessMessage()
-    }
+    // fun getGoogleSignInClient(): GoogleSignInClient = authRepository.getGoogleSignInClient()
 
     private fun clearMessages() {
         _errorMessage.value = null
@@ -423,4 +537,41 @@ class AuthViewModel(context: Context) : ViewModel() {
     fun clearEmailVerificationSent() {
         _emailVerificationSent.value = false
     }
+
+    // ユーザーデータを取得
+    fun loadUserData(onLoaded: (UserData?) -> Unit) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                val currentUser = authRepository.getCurrentUser()
+                if (currentUser == null) {
+                    _errorMessage.value = "ユーザーがログインしていません"
+                    onLoaded(null)
+                    return@launch
+                }
+                val userDoc = authRepository.getUserDocument(currentUser.uid)
+                if (userDoc != null) {
+                    onLoaded(UserData(
+                        userId = userDoc["userId"] as? String ?: "",
+                        displayName = userDoc["displayName"] as? String ?: "",
+                        email = userDoc["email"] as? String ?: "",
+                        prefecture = userDoc["prefecture"] as? String ?: "",
+                        city = userDoc["city"] as? String ?: "",
+                        isAddressPublic = userDoc["isAddressPublic"] as? Boolean ?: false,
+                        createdAt = userDoc["createdAt"] as? com.google.firebase.Timestamp ?: com.google.firebase.Timestamp.now(),
+                        updatedAt = userDoc["updatedAt"] as? com.google.firebase.Timestamp ?: com.google.firebase.Timestamp.now(),
+                        skills = (userDoc["skills"] as? List<*>)?.mapNotNull { it as? String } ?: emptyList()
+                    ))
+                } else {
+                    onLoaded(null)
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "ユーザーデータの読み込みに失敗しました: ${e.message}"
+                onLoaded(null)
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
 }

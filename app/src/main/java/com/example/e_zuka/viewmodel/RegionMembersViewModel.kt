@@ -5,10 +5,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.e_zuka.data.model.RegionMemberData
 import com.example.e_zuka.data.region.RegionMembersRepository
+import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 class RegionMembersViewModel : ViewModel() {
     private val membersRepository = RegionMembersRepository()
@@ -67,6 +69,25 @@ class RegionMembersViewModel : ViewModel() {
             } catch (_: Exception) {
                 onResult(emptyList())
             }
+        }
+    }
+
+    suspend fun getUserDocument(userId: String): Map<String, Any>? {
+        return try {
+            val userDoc = FirebaseFirestore.getInstance()
+                .collection("users")
+                .document(userId)
+                .get()
+                .await()
+
+            if (userDoc.exists()) {
+                userDoc.data
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to get user document", e)
+            null
         }
     }
 

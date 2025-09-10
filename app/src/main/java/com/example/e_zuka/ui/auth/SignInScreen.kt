@@ -1,7 +1,9 @@
+@file:Suppress("unused")
+
 package com.example.e_zuka.ui.auth
 
-import android.app.Activity
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +29,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -41,6 +44,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -53,17 +57,18 @@ import androidx.compose.ui.unit.dp
 import com.example.e_zuka.ui.components.LoadingButton
 import com.example.e_zuka.ui.components.ValidatedTextField
 import com.example.e_zuka.viewmodel.AuthViewModel
-import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.common.api.ApiException
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
+@Suppress("DEPRECATION")
 @Composable
 fun SignInScreen(
     viewModel: AuthViewModel,
     onNavigateToSignUp: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
@@ -100,33 +105,26 @@ fun SignInScreen(
         isFormValid = emailError == null && passwordError == null &&
                 email.isNotBlank() && password.isNotBlank()
     }
+    // One Tap (Google Identity) 設定
+    val oneTapClient = viewModel.getOneTapClient(context)
+    val beginRequest = viewModel.buildBeginSignInRequest()
 
-    // エラーメッセージ表示
-    val errorMessage by viewModel.errorMessage.collectAsState()
-    LaunchedEffect(errorMessage) {
-        errorMessage?.let {
-            snackbarHostState.showSnackbar(it)
-            viewModel.clearError()
-        }
-    }
-
-    // Google Sign-Inの設定
-    val googleSignInLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
+    val oneTapLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
-            val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-            try {
-                val account = task.getResult(ApiException::class.java)
-                if (account != null) {
-                    viewModel.signInWithGoogle(account)
-                }
-            } catch (_: ApiException) {
-                // suspend関数はコルーチン内で呼ぶ
-                coroutineScope.launch {
-                    snackbarHostState.showSnackbar("Googleサインインに失敗しました")
+        try {
+            val data = result.data
+            if (data != null) {
+                val credential = oneTapClient.getSignInCredentialFromIntent(data)
+                val idToken = credential.googleIdToken
+                if (!idToken.isNullOrEmpty()) {
+                    coroutineScope.launch { viewModel.signInWithIdToken(idToken) }
+                } else {
+                    coroutineScope.launch { snackbarHostState.showSnackbar("IDトークンが取得できませんでした") }
                 }
             }
+        } catch (e: ApiException) {
+            coroutineScope.launch { snackbarHostState.showSnackbar("One Tap サインインに失敗しました: ${e.message}") }
         }
     }
 
@@ -244,13 +242,22 @@ fun SignInScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Googleサインインボタン
+                    // Google One Tap サインインボタン
                     LoadingButton(
                         text = "Googleでログイン",
                         isLoading = isLoading,
                         onClick = {
-                            val intent = viewModel.getGoogleSignInClient().signInIntent
-                            googleSignInLauncher.launch(intent)
+                            coroutineScope.launch {
+                                try {
+                                    val result = oneTapClient.beginSignIn(beginRequest).await()
+                                    val intentSender = result.pendingIntent.intentSender
+                                    val req = IntentSenderRequest.Builder(intentSender).build()
+                                    oneTapLauncher.launch(req)
+                                } catch (e: Exception) {
+                                    // beginSignIn 失敗時はメッセージ表示
+                                    snackbarHostState.showSnackbar("One Tap を開始できませんでした: ${e.message}")
+                                }
+                            }
                         },
                         enabled = !isLoading,
                         isOutlined = true
@@ -261,6 +268,17 @@ fun SignInScreen(
                     // 新規登録への導線
                     TextButton(onClick = onNavigateToSignUp, modifier = Modifier.semantics { contentDescription = "新規登録へ" }) {
                         Text("アカウントをお持ちでない方はこちら")
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // 再試行ボタン（ネットワークエラーなどで最後のサインインを再試行）
+                    OutlinedButton(
+                        onClick = { viewModel.retrySignIn() },
+                        enabled = !isLoading,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("ログインを再試行")
                     }
                 }
             }

@@ -27,7 +27,6 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Done
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
@@ -109,25 +108,7 @@ fun SettingsScreen(
 
     // 得意なこと・資格の管理用のmutableStateList
     val skills = remember { mutableStateListOf<String>() }
-
-    // メッセージの監視
-    LaunchedEffect(viewModel) {
-        viewModel.errorMessage.collect { message ->
-            message?.let {
-                snackbarHostState.showSnackbar(it)
-                viewModel.clearError()
-            }
-        }
-    }
-
-    LaunchedEffect(viewModel) {
-        viewModel.successMessage.collect { message ->
-            message?.let {
-                snackbarHostState.showSnackbar(it)
-                viewModel.clearSuccessMessage()
-            }
-        }
-    }
+    val MAX_SKILLS = 10
 
     // 初回ロード時に得意なことを取得
     LaunchedEffect(Unit) {
@@ -193,7 +174,14 @@ fun SettingsScreen(
                 modifier = Modifier.semantics { contentDescription = "表示設定" }
             )
 
-            // 得意なこと・資格セクション
+            // 住所設定カード
+            AddressSettingsCard(
+                user = user,
+                authViewModel = viewModel,
+                modifier = Modifier.semantics { contentDescription = "住所設定" }
+            )
+
+            // 得意なこと・資格セクション（横スクロールのチップ表示 + 詳細リスト）
             SettingsSection(
                 title = "得意なこと・資格",
                 icon = Icons.Default.CheckCircle
@@ -202,20 +190,68 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(16.dp)
                 ) {
-                    skills.forEachIndexed { index, skill ->
-                        SkillItem(
-                            skill = skill,
-                            onEdit = {
-                                dialogState = SettingsDialogState.EditSkill(index, skill)
-                            },
-                            onDelete = {
-                                dialogState = SettingsDialogState.DeleteSkill(index, skill)
-                            },
-                            modifier = Modifier.semantics { contentDescription = "得意なこと: $skill" }
-                        )
+                    // カウントとヒント
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(text = "登録: ${skills.size}/$MAX_SKILLS", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(text = "クリックで編集、ゴミ箱で削除", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // チップ風の横スクロール表示
+                    androidx.compose.foundation.lazy.LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        content = {
+                            items(skills.size) { idx ->
+                                val skill = skills[idx]
+                                Card(
+                                    modifier = Modifier
+                                        .height(40.dp)
+                                        .semantics { contentDescription = "得意なこと: $skill" },
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                                ) {
+                                    Row(modifier = Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(text = skill, style = MaterialTheme.typography.bodyMedium)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        IconButton(onClick = { dialogState = SettingsDialogState.EditSkill(idx, skill) }) {
+                                            Icon(Icons.Default.Edit, contentDescription = "編集", tint = MaterialTheme.colorScheme.primary)
+                                        }
+                                        IconButton(onClick = { dialogState = SettingsDialogState.DeleteSkill(idx, skill) }) {
+                                            Icon(Icons.Default.Close, contentDescription = "削除", tint = MaterialTheme.colorScheme.error)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // アクセシビリティのための詳細リスト（小さく表示）
+                    if (skills.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            skills.forEachIndexed { index, skill ->
+                                SkillItem(
+                                    skill = skill,
+                                    onEdit = { dialogState = SettingsDialogState.EditSkill(index, skill) },
+                                    onDelete = { dialogState = SettingsDialogState.DeleteSkill(index, skill) },
+                                    modifier = Modifier.semantics { contentDescription = "得意なこと詳細: $skill" }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     OutlinedButton(
-                        onClick = { dialogState = SettingsDialogState.AddSkill() },
+                        onClick = {
+                            if (skills.size >= MAX_SKILLS) {
+                                coroutineScope.launch { snackbarHostState.showSnackbar("最大 $MAX_SKILLS 件まで登録できます") }
+                            } else {
+                                dialogState = SettingsDialogState.AddSkill()
+                            }
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
                             .semantics { contentDescription = "得意なことを追加" }
@@ -802,102 +838,6 @@ private fun SettingItem(
             .clickable(onClick = onClick)
             .fillMaxWidth()
     )
-}
-
-@Composable
-private fun ErrorStateView(
-    message: String,
-    onRetry: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(24.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.errorContainer
-            ),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Column(
-                modifier = Modifier.padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Icon(
-                    Icons.Default.Warning,
-                    contentDescription = "エラー",
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.onErrorContainer
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = message,
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onErrorContainer
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                androidx.compose.material3.Button(
-                    onClick = onRetry,
-                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Text(
-                        text = "再試行",
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun EmptyStateView(
-    message: String,
-    onRefresh: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Icon(
-                Icons.Default.Groups,
-                contentDescription = "メンバーがいません",
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            androidx.compose.material3.OutlinedButton(
-                onClick = onRefresh
-            ) {
-                Icon(
-                    Icons.Default.Refresh,
-                    contentDescription = "メンバー一覧を更新",
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("更新")
-            }
-        }
-    }
 }
 
 fun <T> List<T>.anyIndexed(predicate: (Int, T) -> Boolean): Boolean {
